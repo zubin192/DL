@@ -3,7 +3,6 @@ import time
 from typing import Union
 
 import numpy as np
-# import pyvirtualdisplay
 import torch
 from vmas import make_env
 from vmas.simulator.core import Agent
@@ -38,13 +37,6 @@ def vmas_env_EA_train(
         random_action (bool): Use random actions or have all agents perform the down action
 
     """
-
-    # num_pols = kwargs.get("num_pols", None)
-    # num_agents = kwargs.get("num_agents", None)
-    # num_tasks = kwargs.get("num_tasks", None)
-    # modality_funcs = kwargs.get("modality_funcs", None)
-    # epochs = kwargs.get("epochs", None)
-    # verbose = kwargs.get("verbose", False)
 
     # Initialize policy population
     pol_pop = [SpecializationPolicy() for _ in range(num_pols)]
@@ -120,13 +112,13 @@ def vmas_env_EA_train(
         # Process results, render
         total_time = time.time() - init_time
         
-    return np.max(pol_pop, key=lambda policy: policy.fitness)
+    return max(pol_pop, key=lambda policy: policy.fitness)
 
         
 
 if __name__ == "__main__":
     num_agents=4 # NOTE agent 0 is mothership
-    num_tasks=3
+    num_tasks=4
     num_pols=1
     epochs=1
     num_envs = 4 # 32
@@ -156,6 +148,4 @@ if __name__ == "__main__":
                                     num_pols=num_pols,
                                     verbose=verbose
                                 )
-
-    # from IPython.display import Image
-    # Image(f'{scenario_name}.gif')
+    

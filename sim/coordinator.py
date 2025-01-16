@@ -1,11 +1,50 @@
 import torch
+from vmas.simulator.core import *
 from vmas.simulator.core import Agent
-from vmas.simulator.utils import Color
 
 
 class Coordinator(Agent):
     
-    def __init__(self, name, shape = None, movable = True, rotatable = True, collide = True, density = 25, mass = 1, f_range = None, max_f = None, t_range = None, max_t = None, v_range = None, max_speed = None, color=Color.BLUE, alpha = 0.5, obs_range = None, obs_noise = None, u_noise = 0, u_range = 1, u_multiplier = 1, action_script = None, sensors = None, c_noise = 0, silent = True, adversary = False, drag = None, linear_friction = None, angular_friction = None, gravity = None, collision_filter = ..., render_action = False, dynamics = None, action_size = None, discrete_action_nvec = None):
+    def __init__(
+        self,
+        name: str,
+        shape: Shape = None,
+        movable: bool = True,
+        rotatable: bool = True,
+        collide: bool = True,
+        density: float = 25.0,  # Unused for now
+        mass: float = 1.0,
+        f_range: float = None,
+        max_f: float = None,
+        t_range: float = None,
+        max_t: float = None,
+        v_range: float = None,
+        max_speed: float = None,
+        color=Color.BLUE,
+        alpha: float = 0.5,
+        obs_range: float = None,
+        obs_noise: float = None,
+        u_noise: Union[float, Sequence[float]] = 0.0,
+        u_range: Union[float, Sequence[float]] = 1.0,
+        u_multiplier: Union[float, Sequence[float]] = 1.0,
+        action_script: Callable[[Agent, World], None] = None,
+        sensors: List[Sensor] = None,
+        c_noise: float = 0.0,
+        silent: bool = True,
+        adversary: bool = False,
+        drag: float = None,
+        linear_friction: float = None,
+        angular_friction: float = None,
+        gravity: float = None,
+        collision_filter: Callable[[Entity], bool] = lambda _: True,
+        render_action: bool = False,
+        dynamics: Dynamics = None,  # Defaults to holonomic
+        action_size: int = None,  # Defaults to what required by the dynamics
+        discrete_action_nvec: List[
+            int
+        ] = None,
+        
+        ):
         
         self.agent_type = 'coordinator'
         self.obs = []
