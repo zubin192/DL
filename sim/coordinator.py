@@ -57,19 +57,24 @@ class Coordinator(Agent):
         
         self.obs = obs
         
-    def update_specializations(self, env, specs_policy):
+    def update_specializations(self, env, specs_policy, num_agents):
         """
         Use specs_policy to updated agent specializations
         
         return torch.Tensor
         """
         # TODO Update when we have a policy
+        # N_AGENTS x N_ENVS x SPECS
+        comms = num_agents//2
+        agent_specs = torch.tensor([[[1.0, 0.0]]], device=env.device).expand(num_agents-comms, env.batch_dim, 2)
         
-        agent_specs = torch.tensor([1.0, 0.5], device=env.device, dtype=torch.float64).repeat(env.batch_dim, 1)
+        comms_specs = torch.tensor([[[0.0, 1.0]]], device=env.device).expand(comms, env.batch_dim, 2)
         
-        return agent_specs
+        # print(torch.cat((agent_specs,comms_specs), dim=0))
         
-    def get_action(self, env):
+        return torch.cat((agent_specs,comms_specs), dim=0)
+        
+    def get_action(self, env, id):
         """
         Coordinator does not move.
         """

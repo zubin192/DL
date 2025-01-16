@@ -1,3 +1,5 @@
+import math
+
 import torch
 from vmas.simulator.core import Box, Landmark, Sphere, World
 from vmas.simulator.scenario import BaseScenario
@@ -78,23 +80,29 @@ class ScenarioTaskComms(BaseScenario):
         """
 
         # Pass any kwargs you desire when creating the environment
-        num_agents = kwargs.get("num_agents", 5)
-        num_tasks = kwargs.get("num_tasks", 5)
+        self.num_agents = kwargs.get("num_agents", 5)
+        self.num_tasks = kwargs.get("num_tasks", 5)
         modality_funcs = kwargs.get("modality_funcs", [])
+        sim_action_func = kwargs.get("sim_action_func", None)
+        
+        max_vel = 0.2
+        self.task_comp_thresh = 0.05
+        self.max_random_dist = 2
 
         self.batch_dim = batch_dim
+        self.device = device
         
         # Create world
         world = World(batch_dim, device, dt=0.1, drag=0.25, dim_c=0)
         # Add agents
-        for i in range(num_agents):
+        for i in range(self.num_agents):
             if i == 0: # Agent 0 is mothership
                 agent = Coordinator(
                     name=f"coordinator {i}",
                     collide=True,
                     mass=100.0,
                     shape=Sphere(radius=0.04),
-                    max_speed=None,
+                    max_speed=0.0,
                     color=Color.BLUE,
                     u_range=1.0,
                 )
@@ -104,14 +112,15 @@ class ScenarioTaskComms(BaseScenario):
                     collide=True,
                     mass=1.0,
                     shape=Sphere(radius=0.02),
-                    max_speed=None,
+                    max_speed=max_vel,
                     color=Color.BLUE,
                     u_range=1.0,
-                    modality_funcs=modality_funcs
+                    modality_funcs=modality_funcs,
+                    sim_action_func=sim_action_func,
                 )
             world.add_agent(agent)
         # Add tasks
-        for i in range(num_tasks):
+        for i in range(self.num_tasks):
             task = Landmark(
                 name=f"task {i}",
                 collide=False,
@@ -120,7 +129,7 @@ class ScenarioTaskComms(BaseScenario):
                 color=Color.RED,
             )
             world.add_landmark(task)
-
+     
         self._done = torch.zeros(batch_dim, device=device, dtype=torch.bool)
 
         return world
@@ -203,18 +212,35 @@ class ScenarioTaskComms(BaseScenario):
         """
 
         for i, agent in enumerate(self.world.agents):
-            agent.set_pos(
-                torch.tensor(
-                        [-0.2 + 0.1 * i, 1.0],
-                        dtype=torch.float32,
-                        device=self.world.device,
-                ),
-                    batch_index=env_index,
+            if "coordinator" in agent.name:
+                agent.set_pos(
+                    torch.tensor(
+                            [0.0, 0.0],
+                            dtype=torch.float32,
+                            device=self.world.device,
+                    ),
+                        batch_index=env_index,
+                )
+            else:
+                angle = 2 * math.pi * (i - 1) / self.num_agents
+                agent.set_pos(
+                    torch.tensor(
+                            [0.1*math.cos(angle),
+                             0.1*math.sin(angle)],
+                            dtype=torch.float32,
+                            device=self.world.device,
+                    ),
+                        batch_index=env_index,
+                )
+            agent.comms_noise = torch.zeros((self.world.batch_dim,),device=self.world.device
             )
+                
         for i, landmark in enumerate(self.world.landmarks):
+            angle = 2 * math.pi * (i) / self.num_tasks
             landmark.set_pos(
                 torch.tensor(
-                        [0.2 if i % 2 else -0.2, 0.6 - 0.3 * i],
+                        [math.cos(angle),
+                         math.sin(angle)],
                         dtype=torch.float32,
                         device=self.world.device,
                 ),
@@ -231,7 +257,6 @@ class ScenarioTaskComms(BaseScenario):
                 landmark.complete[env_index] = False
                 landmark.is_rendering[env_index] = True
                 self._done[env_index] = False
-
 
 
     def observation(self, agent):
@@ -272,9 +297,16 @@ class ScenarioTaskComms(BaseScenario):
             ...         return {"pos": agent.state.pos, "vel": agent.state.vel}
 
         """
-        output_dict = {"pos": agent.state.pos,
-                       "vel": agent.state.vel,
-                       }
+        # NOTE Processing task completion here
+        for landmark in self.world.landmarks:
+            completion_mask = landmark.complete.clone()
+            abs_dists = (torch.abs(landmark.state.pos - agent.state.pos))
+            landmark.complete = torch.norm(abs_dists, dim=1) < self.task_comp_thresh
+            landmark.complete[completion_mask] = True
+            # print("Task", landmark.name, "Status:\n", landmark.complete)
+        
+        
+        output_dict = {}
         
         # agent_rel_poses = []
         for a_other in self.world.agents:
@@ -289,7 +321,28 @@ class ScenarioTaskComms(BaseScenario):
             # task_rel_poses.append(landmark.state.pos - agent.state.pos)
             # task_complete_statuses.append(landmark.complete.unsqueeze(-1))
             output_dict[landmark.name+" pos"] = landmark.state.pos - agent.state.pos
-            output_dict[landmark.name+" status"] = landmark.complete.unsqueeze(-1)
+            output_dict[landmark.name+" status"] = landmark.complete
+            
+            
+        # TODO Evaluate pos localization with noise
+        # Have noise sum between agents
+        if 'coordinator' not in agent.name:
+            cum_noises = []
+            for a_other in self.world.agents:
+                if a_other.name != agent.name:
+                    noise_to_other = torch.norm(a_other.state.pos - agent.state.pos, dim=1)/self.max_random_dist
+                    # print("Noise to other:\n", noise_to_other)
+                    cum_noises.append(a_other.comms_noise + noise_to_other)
+            
+            stacked_comms = torch.stack(cum_noises, dim=0)   
+            # print("Stacked comms:\n", stacked_comms)    
+
+            # Find the minimum noise values
+            best_comms = torch.min(stacked_comms, dim=0).values
+            # print("Best comms:\n", best_comms)
+            agent.comms_noise = best_comms
+            
+        output_dict['pos'] = agent.state.pos
 
         return output_dict
 

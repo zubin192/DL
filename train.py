@@ -8,6 +8,7 @@ from vmas import make_env
 from vmas.simulator.core import Agent
 from vmas.simulator.scenario import BaseScenario
 
+from control.tasks_comms import one_step_lookahead
 from modalities.tasks_comms import get_mode_do_comms, get_mode_do_tasks
 from scenarios.tasks_comms import ScenarioTaskComms
 from specialization_policy import SpecializationPolicy
@@ -66,12 +67,12 @@ def vmas_env_EA_train(
             obs = env.reset() # NOTE reset env for each simulation loop
             for i, agent in enumerate(env.agents): # initialize obs
                 agent.process_obs(obs[i])
+                
             cum_rews = None
             for s in range(n_steps):
                 print(f"Step {s}")
-
-                # TODO Update coordinator specialization assignments
-                specs = env.agents[0].update_specializations(env, pol)
+                # Update coordinator specialization assignments
+                specs = env.agents[0].update_specializations(env, pol, num_agents)
 
                 # Act using specs scaling
                 actions = []
@@ -79,7 +80,7 @@ def vmas_env_EA_train(
                     if i != 0:
                         agent.specialization = specs[i]
                     agent.process_obs(obs[i])
-                    actions.append(agent.get_action(env))
+                    actions.append(agent.get_action(env, i))
                 
                 print("Actions:", actions)
                 obs, rews, dones, info = env.step(actions)
@@ -117,12 +118,12 @@ def vmas_env_EA_train(
         
 
 if __name__ == "__main__":
-    num_agents=4 # NOTE agent 0 is mothership
+    num_agents=3 # NOTE agent 0 is mothership
     num_tasks=4
     num_pols=1
     epochs=1
     num_envs = 4 # 32
-    n_steps = 5 # 100
+    n_steps = 100 # 100
     device = 'cpu' #cuda
 
     verbose = False
@@ -143,6 +144,7 @@ if __name__ == "__main__":
                                     num_agents=num_agents,
                                     num_tasks=num_tasks,
                                     modality_funcs=modality_funcs,
+                                    sim_action_func=one_step_lookahead,
                                     # Training variables
                                     epochs=epochs,
                                     num_pols=num_pols,

@@ -11,6 +11,7 @@ class Worker(Agent):
         self,
         name: str,
         modality_funcs: List = None,
+        sim_action_func = None,
         velocity: float = 0.1,
         shape: Shape = None,
         movable: bool = True,
@@ -53,6 +54,7 @@ class Worker(Agent):
         self.agent_type = 'worker'
         self.obs = []
         self.modality_funcs = modality_funcs
+        self.sim_action_func = sim_action_func
         self.velocity = velocity
         self.action_dict = {0: [0.0,0.0],
                         1: [0.0,-self.velocity],
@@ -77,10 +79,26 @@ class Worker(Agent):
         
         self.obs = obs
         
+    def _sim_action(self, action_id, env):
+        # print('!! Sim action', action_id)
+        # print("Sim init obs:\n", self.obs)
+        
+        # Translate action id tensor to action
+        # print(torch.tensor(self.action_dict[action_id]))
+        # print(torch.tensor(self.action_dict[action_id]).expand(env.batch_dim, 2))
+        motion = (torch.tensor(self.action_dict[action_id], device=env.device)
+                                .expand(env.batch_dim, 2)
+                                )
+        # print("Motion:", motion)
+        sim_obs = self.sim_action_func(self.obs, motion)
+        # print("Sim new obs:\n", sim_obs)
+        
+        # print("Recheck original obs:\n", self.obs)
+        return sim_obs
         
     def get_action(self,
                    env,
-                   selection_strategy='one_step',
+                   id,
                    ):
         """
         Use coordinator-assigned agent specialization to select action
@@ -97,48 +115,45 @@ class Worker(Agent):
         - 8 up right
         """
         
-        
-        
-        if selection_strategy == 'one_step': # Use one-step lookahead selection
+        # if selection_strategy == 'one_step': # Use one-step lookahead selection
                 
-            # Evaluate action per-environment
-            best_act_ids = (torch.tensor([0], device=env.device, dtype=torch.long)
-                                .unsqueeze(-1)
-                                .expand(env.batch_dim, 1)
-                                )
-            best_act_vals = (torch.tensor([torch.inf], device=env.device)
-                                .unsqueeze(-1)
-                                .expand(env.batch_dim, 1)
-                                )
+        # Evaluate action per-environment
+        best_act_ids = (torch.tensor([0], device=env.device, dtype=torch.long)
+                            # .unsqueeze(-1)
+                            .expand(env.batch_dim, 1)
+                            )
+        best_act_vals = (torch.tensor([-1], device=env.device)
+                            # .unsqueeze(-1)
+                            .expand(env.batch_dim, 1)
+                            )
+        
+        for act in self.action_dict.keys():
+            # Evaluate each action impact given obs
+            act_tensor = (torch.tensor([act], device=env.device, dtype=torch.long)
+                            .unsqueeze(-1)
+                            .expand(env.batch_dim, 1)
+                            )
             
-            for act in self.action_dict.keys():
-                # TODO: Simulate impacts of action
-                # Evaluate each action impact given obs
-                act_tensor = (torch.tensor([act], device=env.device, dtype=torch.long)
-                                .unsqueeze(-1)
-                                .expand(env.batch_dim, 1)
-                                )
-                
-                modality_vals = []
-                for mode_func in self.modality_funcs:
-                    modality_vals.append(mode_func(self.obs))
-                    
-                # print("Act", act, "modality list:", modality_vals)
-                modality_vals = torch.stack(modality_vals, dim=1)
+            # Simulate impacts of action
+            sim_obs = self._sim_action(act, env)
+            modality_vals = []
+            for mode_func in self.modality_funcs:
+                modality_vals.append(mode_func(sim_obs, id))
+            modality_vals = torch.stack(modality_vals, dim=1)
 
-                # Process modality values, scale according to specialization
-                # print("Act", act, "modality vals:", modality_vals, modality_vals.shape)
-                # print("Worker specs:", self.specialization, self.specialization.shape)
-                act_vals = modality_vals @ self.specialization.float().unsqueeze(1) # TODO check dims
-                # print("Act", act, "scaled vals:", act_vals)
-                
-                # NOTE Finding action that minimizes vals
-                best_act_ids = torch.where(act_vals < best_act_vals, act_tensor, best_act_ids)
-                best_act_vals = torch.where(act_vals < best_act_vals, act_vals, best_act_vals)
+            # Process modality values, scale according to specialization
+            print("Act", act, "modality vals:", modality_vals, modality_vals.shape)
+            print("Worker specs:", self.specialization, self.specialization.shape)
+            act_vals = (modality_vals * self.specialization).sum(1).unsqueeze(-1)
+            # print("Act", act, " vals:", act_vals)
+            
+            # NOTE Finding action that minimizes vals
+            best_act_ids = torch.where(act_vals > best_act_vals, act_tensor, best_act_ids)
+            best_act_vals = torch.where(act_vals > best_act_vals, act_vals, best_act_vals)
 
-            print("Best act vals:\n", best_act_vals)
-            print("Best acts:\n", best_act_ids)
+        # print("Best act vals:\n", best_act_vals)
+        # print("Best acts:\n", best_act_ids)
 
-            action = best_act_ids
-        
+        action = best_act_ids
+    
         return action.clone()

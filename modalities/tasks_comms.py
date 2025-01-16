@@ -12,7 +12,7 @@ obs_dict = pos, vel (self); agentpos, agentvel (others); taskpos, taskstatus
 
 """
 
-def get_mode_do_tasks(agent_obs: dict):
+def get_mode_do_tasks(agent_obs: dict, agent_id):
     """Return relative position mag to nearest incomplete task"""
 
     pos_tensors = [] # rel pos to tasks
@@ -21,6 +21,7 @@ def get_mode_do_tasks(agent_obs: dict):
     for key in agent_obs.keys():
         if "task" in key and "pos" in key:
             # TODO check norm math here
+            # print("Exp task rel pos:\n", agent_obs[key])
             pos_tensors.append(torch.norm(agent_obs[key], dim=1).unsqueeze(-1))
         if "task" in key and "status" in key:
             status_tensors.append(agent_obs[key])
@@ -31,20 +32,29 @@ def get_mode_do_tasks(agent_obs: dict):
     # Stack distance tensors and boolean masks
     stacked_distances = torch.stack(pos_tensors, dim=0)  # Shape: (num_tensors, ...)
     stacked_masks = torch.stack(status_tensors, dim=0)  # Shape: (num_tensors, ...)
-
+    
+    # print("Stacked masks\n", stacked_masks)
+    
     # Replace values where the corresponding boolean mask is True with infinity
     masked_distances = stacked_distances.clone()
     masked_distances[stacked_masks] = torch.inf  # Set masked positions to infinity
 
+    # print("Masked distances\n", masked_distances)
+    
     # Compute the minimum across the first dimension (num_tensors)
     min_distances = torch.min(masked_distances, dim=0).values.squeeze()  # Shape: same as input tensors
     
-    # print("Min task dists", min_distances)
+    # print("Min task dists\n", min_distances)
+    
+    # Invert to optimize for distance to nearest task
+    min_distances = 1/min_distances #1/torch.exp(min_distances)
+    
+    # print("Inverted distances:\n", min_distances)
 
     return min_distances # mag x batch_size
 
 
-def get_mode_do_comms(agent_obs: dict):
+def get_mode_do_comms(agent_obs: dict, agent_id):
     """
     Return relative position mag to nearest comms waypoint.
     
@@ -57,6 +67,8 @@ def get_mode_do_comms(agent_obs: dict):
     pos_tensors = [] # rel pos to other agents
 
     for key in agent_obs.keys():
+        if str(agent_id) in key:
+            continue
         if "worker" in key or "coordinator" in key and "pos" in key:
             pos_tensors.append(agent_obs[key])
             # print(key,":", agent_obs[key])
@@ -73,5 +85,11 @@ def get_mode_do_comms(agent_obs: dict):
     # print("Stacked comms dists", stacked_distances)
     min_distances = torch.min(stacked_distances, dim=0).values
     # print("Min comms distances", min_distances)
+    
+    # Invert to optimize for distance to nearest midpt
+    # print("Min comms dists", min_distances)
+    min_distances = 1/min_distances #1/torch.exp(min_distances)
+    
+    # print("Inverted distances:", min_distances)
 
     return min_distances # mag x batch_size
