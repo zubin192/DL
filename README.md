@@ -6,6 +6,7 @@ Coordination strategies are typically classified as either centralized or decent
 Centralized approaches can provide globally-optimal solutions, but require a strong connection with all robots and struggle with scalability as the problem size increases.
 Decentralized methods address these issues by enabling each robot to make their own decisons using control rules that guide their actions given local observations.
 It is, however, challenging to design or learn control rules that result in action selections that are aligned with the global optimal as deployed robots do not have access to global information.
+Oftentimes, alignment can be improved by enabling robots to exchange information to aid the action selection process, but in domains with limited communication such approaches are ineffective.
 
 ## Approach
 Here we consider how a Coordinator robot could be used to enhance the actions of a team of Worker robots operating in a decentralized manner.
