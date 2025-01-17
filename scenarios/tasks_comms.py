@@ -87,7 +87,8 @@ class ScenarioTaskComms(BaseScenario):
         
         max_vel = 0.2
         self.task_comp_thresh = 0.05
-        self.max_random_dist = 2
+        self.max_random_dist = 2.0
+        self.comms_decay = True
 
         self.batch_dim = batch_dim
         self.device = device
@@ -307,25 +308,8 @@ class ScenarioTaskComms(BaseScenario):
         
         output_dict = {}
         
-        # agent_rel_poses = []
-        for a_other in self.world.agents:
-            if a_other.name != agent.name:
-                # agent_rel_poses.append(a_other.state.pos - agent.state.pos)
-                output_dict[a_other.name+" pos"] = a_other.state.pos - agent.state.pos
-        
-        # get positions of all landmarks in this agent's reference frame
-        # task_rel_poses = []
-        # task_complete_statuses = []
-        for landmark in self.world.landmarks:
-            # task_rel_poses.append(landmark.state.pos - agent.state.pos)
-            # task_complete_statuses.append(landmark.complete.unsqueeze(-1))
-            output_dict[landmark.name+" pos"] = landmark.state.pos - agent.state.pos
-            output_dict[landmark.name+" status"] = landmark.complete
-            
-            
-        # TODO Evaluate pos localization with noise
-        # Have noise sum between agents
-        if 'coordinator' not in agent.name:
+        # Evaluate pos localization with noise
+        if 'coordinator' not in agent.name and self.comms_decay:
             cum_noises = []
             for a_other in self.world.agents:
                 if a_other.name != agent.name:
@@ -339,9 +323,34 @@ class ScenarioTaskComms(BaseScenario):
             # Find the minimum noise values
             best_comms = torch.min(stacked_comms, dim=0).values
             # print("Best comms:\n", best_comms)
+            # NOTE: Treat actual pos as mean, noise as SE. Sample from distro.
             agent.comms_noise = best_comms
             
-        output_dict['pos'] = agent.state.pos
+            # TODO apply noise to pos
+            # print("Pos:\n", agent.state.pos, "Noise:\n", agent.comms_noise.unsqueeze(-1).expand(self.batch_dim,2))
+            output_dict['pos'] = torch.normal(agent.state.pos, 
+                                              agent.comms_noise.unsqueeze(-1).expand(self.batch_dim,2))
+            print("Actual pos:\n", agent.state.pos)
+            print("Noisy pos:\n", output_dict['pos'])
+            
+        else:
+            output_dict['pos'] = agent.state.pos
+        
+        # agent_rel_poses = []
+        for a_other in self.world.agents:
+            if a_other.name != agent.name:
+                # agent_rel_poses.append(a_other.state.pos - agent.state.pos)
+                output_dict[a_other.name+" pos"] = a_other.state.pos - output_dict['pos']
+        
+        # get positions of all landmarks in this agent's reference frame
+        # task_rel_poses = []
+        # task_complete_statuses = []
+        for landmark in self.world.landmarks:
+            # task_rel_poses.append(landmark.state.pos - agent.state.pos)
+            # task_complete_statuses.append(landmark.complete.unsqueeze(-1))
+            output_dict[landmark.name+" pos"] = landmark.state.pos - output_dict['pos']
+            output_dict[landmark.name+" status"] = landmark.complete
+            
 
         return output_dict
 
