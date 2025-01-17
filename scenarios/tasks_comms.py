@@ -87,7 +87,7 @@ class ScenarioTaskComms(BaseScenario):
         
         max_vel = 0.2
         self.task_comp_thresh = 0.05
-        self.max_random_dist = 2.0
+        self.comms_dec_rate = 8
         self.comms_decay = True
 
         self.batch_dim = batch_dim
@@ -313,9 +313,13 @@ class ScenarioTaskComms(BaseScenario):
             cum_noises = []
             for a_other in self.world.agents:
                 if a_other.name != agent.name:
-                    noise_to_other = torch.norm(a_other.state.pos - agent.state.pos, dim=1)/self.max_random_dist
+                    # print("")
+                    # print("Dist to other:\n", torch.norm(a_other.state.pos - agent.state.pos, dim=1))
+                    noise_to_other = torch.exp(self.comms_dec_rate*torch.norm(a_other.state.pos - agent.state.pos, dim=1)-self.comms_dec_rate) #/self.max_random_dist)
                     # print("Noise to other:\n", noise_to_other)
                     cum_noises.append(a_other.comms_noise + noise_to_other)
+                    
+                    # print("Cumulative noise with other:\n", a_other.comms_noise + noise_to_other)
             
             stacked_comms = torch.stack(cum_noises, dim=0)   
             # print("Stacked comms:\n", stacked_comms)    
@@ -330,8 +334,8 @@ class ScenarioTaskComms(BaseScenario):
             # print("Pos:\n", agent.state.pos, "Noise:\n", agent.comms_noise.unsqueeze(-1).expand(self.batch_dim,2))
             output_dict['pos'] = torch.normal(agent.state.pos, 
                                               agent.comms_noise.unsqueeze(-1).expand(self.batch_dim,2))
-            print("Actual pos:\n", agent.state.pos)
-            print("Noisy pos:\n", output_dict['pos'])
+            # print("Actual pos:\n", agent.state.pos)
+            # print("Noisy pos:\n", output_dict['pos'])
             
         else:
             output_dict['pos'] = agent.state.pos

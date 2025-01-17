@@ -68,7 +68,7 @@ class Coordinator(Agent):
         comms = num_agents//2
         agent_specs = torch.tensor([[[1.0, 0.0]]], device=env.device).expand(num_agents-comms, env.batch_dim, 2)
         
-        comms_specs = torch.tensor([[[1.0, 0.0]]], device=env.device).expand(comms, env.batch_dim, 2)
+        comms_specs = torch.tensor([[[0.0, 1.0]]], device=env.device).expand(comms, env.batch_dim, 2)
         
         # print(torch.cat((agent_specs,comms_specs), dim=0))
         
