@@ -12,19 +12,28 @@ obs_dict = pos, vel (self); agentpos, agentvel (others); taskpos, taskstatus
 
 """
 
-def get_mode_do_tasks(agent_obs: dict, agent_id):
+def get_mode_do_tasks(agent_obs: dict, motion):
     """Return relative position mag to nearest incomplete task"""
+    
+    new_obs = {}
+    
+    for key in agent_obs.keys():
+        # if key == 'pos':
+        #     new_obs[key] = agent_obs[key] + motion
+        if 'pos' in key and 'task' in key: # Rel dists to tasks with motion
+            new_obs[key] = agent_obs[key] - motion
+        else:
+            new_obs[key] = agent_obs[key]
 
     pos_tensors = [] # rel pos to tasks
     status_tensors = [] # tasks status
     
-    for key in agent_obs.keys():
+    for key in new_obs.keys():
         if "task" in key and "pos" in key:
-            # TODO check norm math here
             # print("Exp task rel pos:\n", agent_obs[key])
-            pos_tensors.append(torch.norm(agent_obs[key], dim=1).unsqueeze(-1))
+            pos_tensors.append(torch.norm(new_obs[key], dim=1).unsqueeze(-1))
         if "task" in key and "status" in key:
-            status_tensors.append(agent_obs[key])
+            status_tensors.append(new_obs[key])
             
     # print("Position tensors:", pos_tensors,
     #       "\nStatus tensors:", status_tensors)
@@ -47,14 +56,14 @@ def get_mode_do_tasks(agent_obs: dict, agent_id):
     # print("Min task dists\n", min_distances)
     
     # Invert to optimize for distance to nearest task
-    min_distances = 1/min_distances #1/torch.exp(min_distances)
+    min_distances = 1/torch.exp(min_distances)
     
     # print("Inverted distances:\n", min_distances)
 
     return min_distances # mag x batch_size
 
 
-def get_mode_do_comms(agent_obs: dict, agent_id):
+def get_mode_do_comms(agent_obs: dict, rel_motion):
     """
     Return relative position mag to nearest comms waypoint.
     
@@ -63,21 +72,23 @@ def get_mode_do_comms(agent_obs: dict, agent_id):
 
     # First, find optimal comms waypoint
     # TODO This is currently nearest midpoint between any 2 agents. Maybe update?
-
-    pos_tensors = [] # rel pos to other agents
+    
+    rel_pos_tensors = [] # rel pos to other agents
 
     for key in agent_obs.keys():
-        if str(agent_id) in key:
+        if key == "pos":
             continue
         if "worker" in key or "coordinator" in key and "pos" in key:
-            pos_tensors.append(agent_obs[key])
+            rel_pos_tensors.append(agent_obs[key])
             # print(key,":", agent_obs[key])
     # print("Comms pos tensors", pos_tensors)
 
     midpt_pos_tensors = []
-    for pair in combinations(pos_tensors, 2):
-        # print("Evaluating pair", pair)
-        midpt_pos_tensors.append(torch.norm((pair[0]-pair[1])/2, dim=1))#.unsqueeze(-1))
+    for pair in combinations(rel_pos_tensors, 2):
+        # print("Evaluating pair\n", pair)
+        midpts = (pair[0]+pair[1])/2
+        # agent_move = agent_obs['pos'] + motion
+        midpt_pos_tensors.append(torch.norm(midpts-rel_motion, dim=1))#.unsqueeze(-1))
     # print("Midpt comms dists", midpt_pos_tensors)
         
     # Returns distance to nearest midpoint
@@ -88,7 +99,7 @@ def get_mode_do_comms(agent_obs: dict, agent_id):
     
     # Invert to optimize for distance to nearest midpt
     # print("Min comms dists", min_distances)
-    min_distances = 1/min_distances #1/torch.exp(min_distances)
+    min_distances = 1/torch.exp(min_distances)
     
     # print("Inverted distances:", min_distances)
 

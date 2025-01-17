@@ -93,7 +93,7 @@ class ScenarioTaskComms(BaseScenario):
         self.device = device
         
         # Create world
-        world = World(batch_dim, device, dt=0.1, drag=0.25, dim_c=0)
+        world = World(batch_dim, device, dt=0.1, drag=0.5, dim_c=0)
         # Add agents
         for i in range(self.num_agents):
             if i == 0: # Agent 0 is mothership
@@ -304,7 +304,6 @@ class ScenarioTaskComms(BaseScenario):
             landmark.complete = torch.norm(abs_dists, dim=1) < self.task_comp_thresh
             landmark.complete[completion_mask] = True
             # print("Task", landmark.name, "Status:\n", landmark.complete)
-        
         
         output_dict = {}
         

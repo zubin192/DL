@@ -8,7 +8,6 @@ from vmas import make_env
 from vmas.simulator.core import Agent
 from vmas.simulator.scenario import BaseScenario
 
-from control.tasks_comms import one_step_lookahead
 from modalities.tasks_comms import get_mode_do_comms, get_mode_do_tasks
 from scenarios.tasks_comms import ScenarioTaskComms
 from specialization_policy import SpecializationPolicy
@@ -82,7 +81,7 @@ def vmas_env_EA_train(
                     agent.process_obs(obs[i])
                     actions.append(agent.get_action(env, i))
                 
-                print("Actions:", actions)
+                # print("Actions:", actions)
                 obs, rews, dones, info = env.step(actions)
                 if cum_rews == None: cum_rews = rews
                 else:
@@ -144,7 +143,6 @@ if __name__ == "__main__":
                                     num_agents=num_agents,
                                     num_tasks=num_tasks,
                                     modality_funcs=modality_funcs,
-                                    sim_action_func=one_step_lookahead,
                                     # Training variables
                                     epochs=epochs,
                                     num_pols=num_pols,

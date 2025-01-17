@@ -12,7 +12,7 @@ class Worker(Agent):
         name: str,
         modality_funcs: List = None,
         sim_action_func = None,
-        velocity: float = 0.1,
+        sim_velocity: float = 0.05,
         shape: Shape = None,
         movable: bool = True,
         rotatable: bool = True,
@@ -55,16 +55,16 @@ class Worker(Agent):
         self.obs = []
         self.modality_funcs = modality_funcs
         self.sim_action_func = sim_action_func
-        self.velocity = velocity
+        self.sim_velocity = sim_velocity
         self.action_dict = {0: [0.0,0.0],
-                        1: [0.0,-self.velocity],
-                        2: [0.0,self.velocity],
-                        3: [-self.velocity,0.0],
-                        4: [-self.velocity,-self.velocity],
-                        5: [-self.velocity,self.velocity],
-                        6: [self.velocity,0.0],
-                        7: [self.velocity,-self.velocity],
-                        8: [self.velocity,self.velocity],                   
+                        1: [0.0,-self.sim_velocity],
+                        2: [0.0,self.sim_velocity],
+                        3: [-self.sim_velocity,0.0],
+                        4: [-self.sim_velocity,-self.sim_velocity],
+                        5: [-self.sim_velocity,self.sim_velocity],
+                        6: [self.sim_velocity,0.0],
+                        7: [self.sim_velocity,-self.sim_velocity],
+                        8: [self.sim_velocity,self.sim_velocity],                   
                         }
         self.specialization = None
         
@@ -79,22 +79,22 @@ class Worker(Agent):
         
         self.obs = obs
         
-    def _sim_action(self, action_id, env):
-        # print('!! Sim action', action_id)
-        # print("Sim init obs:\n", self.obs)
+    # def _sim_action(self, action_id, env):
+    #     # print('!! Sim action', action_id)
+    #     # print("Sim init obs:\n", self.obs)
         
-        # Translate action id tensor to action
-        # print(torch.tensor(self.action_dict[action_id]))
-        # print(torch.tensor(self.action_dict[action_id]).expand(env.batch_dim, 2))
-        motion = (torch.tensor(self.action_dict[action_id], device=env.device)
-                                .expand(env.batch_dim, 2)
-                                )
-        # print("Motion:", motion)
-        sim_obs = self.sim_action_func(self.obs, motion)
-        # print("Sim new obs:\n", sim_obs)
+    #     # Translate action id tensor to action
+    #     # print(torch.tensor(self.action_dict[action_id]))
+    #     # print(torch.tensor(self.action_dict[action_id]).expand(env.batch_dim, 2))
+    #     motion = (torch.tensor(self.action_dict[action_id], device=env.device)
+    #                             .expand(env.batch_dim, 2)
+    #                             )
+    #     # print("Motion:", motion)
+    #     sim_obs = self.sim_action_func(self.obs, motion)
+    #     # print("Sim new obs:\n", sim_obs)
         
-        # print("Recheck original obs:\n", self.obs)
-        return sim_obs
+    #     # print("Recheck original obs:\n", self.obs)
+    #     return sim_obs
         
     def get_action(self,
                    env,
@@ -128,6 +128,7 @@ class Worker(Agent):
                             )
         
         for act in self.action_dict.keys():
+            # print("Eval act", act)
             # Evaluate each action impact given obs
             act_tensor = (torch.tensor([act], device=env.device, dtype=torch.long)
                             .unsqueeze(-1)
@@ -135,15 +136,18 @@ class Worker(Agent):
                             )
             
             # Simulate impacts of action
-            sim_obs = self._sim_action(act, env)
+            # sim_obs = self._sim_action(act, env)
+            motion = (torch.tensor(self.action_dict[act], device=env.device)
+                                .expand(env.batch_dim, 2)
+                                )
             modality_vals = []
             for mode_func in self.modality_funcs:
-                modality_vals.append(mode_func(sim_obs, id))
+                modality_vals.append(mode_func(self.obs, motion))
             modality_vals = torch.stack(modality_vals, dim=1)
 
             # Process modality values, scale according to specialization
-            print("Act", act, "modality vals:", modality_vals, modality_vals.shape)
-            print("Worker specs:", self.specialization, self.specialization.shape)
+            # print("Act", act, "modality vals:", modality_vals, modality_vals.shape)
+            # print("Worker specs:", self.specialization, self.specialization.shape)
             act_vals = (modality_vals * self.specialization).sum(1).unsqueeze(-1)
             # print("Act", act, " vals:", act_vals)
             
