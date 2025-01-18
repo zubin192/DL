@@ -57,22 +57,23 @@ class Coordinator(Agent):
         
         self.obs = obs
         
-    def update_specializations(self, env, specs_policy, num_agents):
+        
+    def update_specializations(self, specs_policy):
         """
         Use specs_policy to updated agent specializations
         
         return torch.Tensor
         """
-        # TODO Update when we have a policy
-        # N_AGENTS x N_ENVS x SPECS
-        comms = num_agents//2
-        agent_specs = torch.tensor([[[1.0, 0.0]]], device=env.device).expand(num_agents-comms, env.batch_dim, 2)
-        
-        comms_specs = torch.tensor([[[0.0, 1.0]]], device=env.device).expand(comms, env.batch_dim, 2)
-        
-        # print(torch.cat((agent_specs,comms_specs), dim=0))
-        
-        return torch.cat((agent_specs,comms_specs), dim=0)
+        combined_obs = []
+        for key in self.obs.keys(): # convert all to floats
+            if key == 'pos':
+                continue
+            # print(key, obs[0][key].float())
+            combined_obs.append(self.obs[key].float())
+        combined_obs = torch.cat(combined_obs, dim=1)
+    
+        return specs_policy.forward(combined_obs)
+    
         
     def get_action(self, env, id):
         """

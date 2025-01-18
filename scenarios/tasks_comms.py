@@ -353,7 +353,7 @@ class ScenarioTaskComms(BaseScenario):
             # task_rel_poses.append(landmark.state.pos - agent.state.pos)
             # task_complete_statuses.append(landmark.complete.unsqueeze(-1))
             output_dict[landmark.name+" pos"] = landmark.state.pos - output_dict['pos']
-            output_dict[landmark.name+" status"] = landmark.complete
+            output_dict[landmark.name+" status"] = landmark.complete.unsqueeze(-1)
             
 
         return output_dict
@@ -388,5 +388,13 @@ class ScenarioTaskComms(BaseScenario):
         """
 
         # reward every agent proportionally to distance from first landmark
-        rew = -torch.linalg.vector_norm(agent.state.pos - self.world.landmarks[0].state.pos, dim=-1)
+        completed_tasks = []
+        for landmark in self.world.landmarks:
+            completed_tasks.append(landmark.complete)
+        
+        # print("List:\n", completed_tasks)
+        completed_tasks = torch.stack(completed_tasks, dim=1)
+        # print("Stacked:\n", completed_tasks)
+        rew = torch.sum(completed_tasks, dim=1, dtype=float).unsqueeze(-1)
+        
         return rew

@@ -2,10 +2,8 @@
 import time
 from typing import Union
 
-import numpy as np
 import torch
 from vmas import make_env
-from vmas.simulator.core import Agent
 from vmas.simulator.scenario import BaseScenario
 
 from modalities.tasks_comms import get_mode_do_comms, get_mode_do_tasks
@@ -38,19 +36,32 @@ def vmas_env_EA_train(
 
     """
 
-    # Initialize policy population
-    pol_pop = [SpecializationPolicy() for _ in range(num_pols)]
-
     # Initialize scenario and env
     scenario_name = scenario if isinstance(scenario,str) else scenario.__class__.__name__
+    
     env = make_env(scenario=scenario,
                     num_envs=num_envs,
                     device=device,
                     continuous_actions=continuous_actions,
                     seed=0,
-                    # Environment specific variables
                     **kwargs
                 )
+    
+    # Get observation dims for scenario
+    # Need dims batch_size x obs_size
+    obs = env.reset()
+    combined_obs = []
+    for key in obs[0].keys(): # convert all to floats
+        if key == 'pos':
+            continue
+        # print(key, obs[0][key].float())
+        combined_obs.append(obs[0][key].float())
+    combined_obs = torch.cat(combined_obs, dim=1)
+    # print("combined_obs:", combined_obs, combined_obs.shape)
+    
+    # Initialize policy population
+    output_shape = (num_agents-1, env.batch_dim, num_modes)
+    pol_pop = [SpecializationPolicy(combined_obs.shape[1], (num_agents-1)*num_modes, output_shape, device=device) for _ in range(num_pols)]
 
     # EA Loop
     ep = 0
@@ -67,27 +78,27 @@ def vmas_env_EA_train(
             for i, agent in enumerate(env.agents): # initialize obs
                 agent.process_obs(obs[i])
                 
-            cum_rews = None
+            # cum_rews = None
             for s in range(n_steps):
                 print(f"Step {s}")
                 # Update coordinator specialization assignments
-                specs = env.agents[0].update_specializations(env, pol, num_agents)
+                specs = env.agents[0].update_specializations(pol)
 
                 # Act using specs scaling
                 actions = []
                 for i, agent in enumerate(env.agents):
                     if i != 0:
-                        agent.specialization = specs[i]
+                        agent.specialization = specs[i-1]
                     agent.process_obs(obs[i])
                     actions.append(agent.get_action(env, i))
                 
                 # print("Actions:", actions)
                 obs, rews, dones, info = env.step(actions)
-                if cum_rews == None: cum_rews = rews
-                else:
-                    cum_rews = [torch.add(a_cum_rew, a_rew) for a_cum_rew, a_rew in zip(cum_rews, rews)]
+                # if cum_rews == None: cum_rews = rews
+                # else:
+                #     cum_rews = [torch.add(a_cum_rew, a_rew) for a_cum_rew, a_rew in zip(cum_rews, rews)]
 
-                if verbose: print("Cum rews:", cum_rews)
+                # if verbose: print("Cum rews:", cum_rews)
 
                 if render:
                     frame = env.render(
@@ -103,8 +114,10 @@ def vmas_env_EA_train(
                 clip.write_gif(f'img/{scenario_name}.gif', fps=fps)
 
         # TODO Calculate fitness (average over cum_rews entries)
-        pol.fitness = torch.mean(torch.tensor([torch.mean(a_cum_rews) for a_cum_rews in cum_rews]))
-        if verbose: print("Fitness:", pol.fitness)
+        print("Rewards:", rews)
+        avg_rew = torch.mean(torch.cat(rews,dim=1))
+        pol.fitness = avg_rew.values()
+        print("Fitness:", pol.fitness)
 
         # TODO Select, crossover, mutate population
         ep+=1
@@ -119,6 +132,7 @@ def vmas_env_EA_train(
 if __name__ == "__main__":
     num_agents=3 # NOTE agent 0 is mothership
     num_tasks=4
+    num_modes=2 # NOTE specific to problem type!
     num_pols=1
     epochs=1
     num_envs = 4 # 32
@@ -142,6 +156,7 @@ if __name__ == "__main__":
                                     # Environment variables
                                     num_agents=num_agents,
                                     num_tasks=num_tasks,
+                                    num_modes=num_modes,
                                     modality_funcs=modality_funcs,
                                     # Training variables
                                     epochs=epochs,
