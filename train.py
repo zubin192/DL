@@ -5,6 +5,7 @@ from typing import Union
 
 import numpy as np
 import torch
+from moviepy import ImageSequenceClip
 from vmas import make_env
 from vmas.simulator.scenario import BaseScenario
 
@@ -97,8 +98,13 @@ def vmas_env_EA_train_static(
     # EA Loop
     render=False
     ep = 0
+    best_rew = 0.0
     while ep < epochs:
-        ep+=1
+        print("Epoch:", ep)
+        
+        if ep == epochs-1:
+            render = True
+            
         # Evaluate policy fitnesses
         frame_list = []  # For creating a gif
         init_time = time.time()
@@ -109,7 +115,7 @@ def vmas_env_EA_train_static(
             agent.process_obs(obs[i])
             
         for s in range(n_steps):
-            print(f"Step {s}")
+            # print(f"Step {s}")
             # Update coordinator specialization assignments
             # NOTE Uses one policy per env in batch here!
             specs = env.agents[0].update_specializations_pop(pol_pop)
@@ -125,32 +131,47 @@ def vmas_env_EA_train_static(
             # print("Actions:", actions)
             obs, rews, dones, info = env.step(actions)
 
+            # TODO - How to render specific environments?
             if render:
                 frame = env.render(
                     mode="rgb_array",
                     agent_index_focus=None,  # Can give the camera an agent index to focus on
                 )
                 frame_list.append(frame)
-
+        
         if render:
-            from moviepy import ImageSequenceClip
             fps=30
             clip = ImageSequenceClip(frame_list, fps=fps)
             clip.write_gif(f'img/{scenario_name}.gif', fps=fps)
 
-        # TODO Calculate fitness (average over cum_rews entries)
+        # Calculate fitness (average over cum_rews entries)
         rews = torch.cat(rews[1:],dim=1)
         avg_rews = torch.mean(rews, dim=1).tolist()
         for i, pol in enumerate(pol_pop):
             pol.fitness = avg_rews[i]
-
-    # TODO Select, crossover, mutate population
-    ep+=1
+            
+        best = max(pol_pop, key=lambda pol: pol.fitness)
+        print("\tBest Rew:", best.fitness)
+            
+        # Select, crossover, mutate population
+        new_pop = [copy.deepcopy(best)]
+        new_pop[0].fitness = None
+        while len(new_pop) < env.batch_dim:
+            parent1 = tournament_selection(pol_pop,
+                                          tournament_size=len(pol_pop)//4)
+            parent2 = tournament_selection(pol_pop,
+                                          tournament_size=len(pol_pop)//4)
+            child = crossover(parent1, parent2)
+            mutate(child, mutation_rate=0.5)
+            new_pop.append(child)
+        pol_pop = new_pop
+        
+        ep+=1
 
     # Process results, render
     total_time = time.time() - init_time
         
-    return max(pol_pop, key=lambda policy: policy.fitness)
+    return best
 
 
 def vmas_env_EA_train_random(
@@ -164,7 +185,7 @@ def vmas_env_EA_train_random(
     **kwargs
 ):
     """
-    This function trains policies by evaluating one at a time over batch_dim environment simulations.
+    This function trains policies by evaluating each pol over batch_dim environment simulations.
 
     Use if we want to evaluate policy effectiveness over batch_dim random sims.
 
@@ -268,13 +289,13 @@ def vmas_env_EA_train_random(
         
 
 if __name__ == "__main__":
-    num_agents=3 # NOTE agent 0 is mothership
-    num_tasks=4
+    num_agents=9 # NOTE agent 0 is mothership
+    num_tasks=8
     num_modes=2 # NOTE specific to problem type!
     num_pols=1
-    epochs=1
-    num_envs = 4 # 32
-    n_steps = 100 # 100
+    epochs=20
+    num_envs = 32 # Batch size
+    n_steps = 250 # 100
     device = 'cpu' #cuda
 
     verbose = False

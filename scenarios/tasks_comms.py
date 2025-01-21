@@ -1,5 +1,6 @@
 import math
 
+import numpy as np
 import torch
 from vmas.simulator.core import Box, Landmark, Sphere, World
 from vmas.simulator.scenario import BaseScenario
@@ -82,6 +83,7 @@ class ScenarioTaskComms(BaseScenario):
         # Pass any kwargs you desire when creating the environment
         self.num_agents = kwargs.get("num_agents", 5)
         self.num_tasks = kwargs.get("num_tasks", 5)
+        self.random_tasks = kwargs.get("random_tasks", True)
         modality_funcs = kwargs.get("modality_funcs", [])
         sim_action_func = kwargs.get("sim_action_func", None)
         
@@ -91,7 +93,7 @@ class ScenarioTaskComms(BaseScenario):
         self.comms_decay = True
 
         self.batch_dim = batch_dim
-        self.device = device
+        # self.device = device
         
         # Create world
         world = World(batch_dim, device, dt=0.1, drag=0.5, dim_c=0)
@@ -237,16 +239,28 @@ class ScenarioTaskComms(BaseScenario):
             )
                 
         for i, landmark in enumerate(self.world.landmarks):
-            angle = 2 * math.pi * (i) / self.num_tasks
-            landmark.set_pos(
-                torch.tensor(
-                        [math.cos(angle),
-                         math.sin(angle)],
-                        dtype=torch.float32,
-                        device=self.world.device,
-                ),
-                    batch_index=env_index,
-            )
+            if self.random_tasks:
+                angle = 2 * math.pi * (i) / self.num_tasks
+                landmark.set_pos(
+                    torch.tensor(
+                            [math.cos(angle),
+                            math.sin(angle)],
+                            dtype=torch.float32,
+                            device=self.world.device,
+                    ),
+                        batch_index=env_index,
+                )
+            else:
+                coords = np.random.rand(2)
+                landmark.set_pos(
+                    torch.tensor(
+                            [coords[0],
+                            coords[1]],
+                            dtype=torch.float32,
+                            device=self.world.device,
+                    ),
+                        batch_index=env_index,
+                )
 
             if env_index is None:
                 landmark.complete = torch.full(
@@ -304,7 +318,6 @@ class ScenarioTaskComms(BaseScenario):
             abs_dists = (torch.abs(landmark.state.pos - agent.state.pos))
             landmark.complete = torch.norm(abs_dists, dim=1) < self.task_comp_thresh
             landmark.complete[completion_mask] = True
-            # print("Task", landmark.name, "Status:\n", landmark.complete)
         
         output_dict = {}
         
@@ -330,7 +343,7 @@ class ScenarioTaskComms(BaseScenario):
             # NOTE: Treat actual pos as mean, noise as SE. Sample from distro.
             agent.comms_noise = best_comms
             
-            # TODO apply noise to pos
+            # apply noise to pos
             # print("Pos:\n", agent.state.pos, "Noise:\n", agent.comms_noise.unsqueeze(-1).expand(self.batch_dim,2))
             output_dict['pos'] = torch.normal(agent.state.pos, 
                                               agent.comms_noise.unsqueeze(-1).expand(self.batch_dim,2))
@@ -343,15 +356,10 @@ class ScenarioTaskComms(BaseScenario):
         # agent_rel_poses = []
         for a_other in self.world.agents:
             if a_other.name != agent.name:
-                # agent_rel_poses.append(a_other.state.pos - agent.state.pos)
                 output_dict[a_other.name+" pos"] = a_other.state.pos - output_dict['pos']
         
         # get positions of all landmarks in this agent's reference frame
-        # task_rel_poses = []
-        # task_complete_statuses = []
         for landmark in self.world.landmarks:
-            # task_rel_poses.append(landmark.state.pos - agent.state.pos)
-            # task_complete_statuses.append(landmark.complete.unsqueeze(-1))
             output_dict[landmark.name+" pos"] = landmark.state.pos - output_dict['pos']
             output_dict[landmark.name+" status"] = landmark.complete.unsqueeze(-1)
             
