@@ -1,5 +1,6 @@
 # Specialization-Based Coordination for Multi-Robot Teams
 
+<!--
 ## Introduction
 Coordinating multiple robots to accomplish a common objective in communication-constrained environments is a challenging task.
 Coordination strategies are typically classified as either centralized or decentralized.
@@ -14,3 +15,4 @@ We define a Worker's actions as contributing to multiple modalities (i.e. a Work
 On their own, Workers may struggle to identify which modality to optimize for at a given time step.
 Our approach aggregates Workers' observations at a Coordinator robot to assemble a global state.
 The Coordinator then processes its global world map to assign modality weights, or "specializations," to each Worker such that the combined specialized team actions are aligned with the global optimal.
+-->
