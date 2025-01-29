@@ -1,0 +1,19 @@
+{
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "files.insertFinalNewline": true,
+    "files.trimTrailingWhitespace": true,
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "autoDocstring.startOnNewLine": false,
+    "autoDocstring.docstringFormat": "google-notypes",
+    "[python]": {
+      "editor.tabSize": 4,
+      "editor.rulers": [90],
+      "editor.formatOnSave": true,
+      "editor.codeActionsOnSave": {
+        "source.fixAll": "explicit",
+        "source.organizeImports": "explicit"
+      },
+      "editor.defaultFormatter": "charliermarsh.ruff"
+    }
+  }
