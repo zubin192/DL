@@ -1,19 +1,31 @@
 {
-  "name": "Project",
+  "name": "Mothership-Passenger Coordination",
+  // "dockerFile": "Dockerfile",
+  // "context": "..",
+  "runArgs": [
+    "--gpus=all"
+  ],
+  // "mounts": [
+  //   "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind"
+  // ],
   "build": {
     "dockerfile": "Dockerfile",
     "context": ".."
   },
-  // "dockerFile": "Dockerfile",
   "remoteUser": "project",
   "customizations": {
     "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      },
       "extensions": [
         "ms-python.python",
+        "ms-vscode-remote.remote-containers",
         "njpwerner.autodocstring",
         "charliermarsh.ruff"
         // "ms-python.mypy-type-checker"
       ]
     }
-  }
+  },
+  "postCreateCommand": "pip install -r requirements.txt"
 }

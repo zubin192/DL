@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 import torch
-from vmas.simulator.core import Box, Landmark, Sphere, World
+from vmas.simulator.core import Landmark, Sphere, World
 from vmas.simulator.scenario import BaseScenario
 from vmas.simulator.utils import Color
 
@@ -11,7 +11,6 @@ from sim.worker import Worker
 
 
 class ScenarioTaskComms(BaseScenario):
-
     """
     The methods that are **compulsory to instantiate** are:
 
@@ -86,7 +85,7 @@ class ScenarioTaskComms(BaseScenario):
         self.random_tasks = kwargs.get("random_tasks", True)
         modality_funcs = kwargs.get("modality_funcs", [])
         sim_action_func = kwargs.get("sim_action_func", None)
-        
+
         max_vel = 0.2
         self.task_comp_thresh = 0.05
         self.comms_dec_rate = 8
@@ -94,12 +93,12 @@ class ScenarioTaskComms(BaseScenario):
 
         self.batch_dim = batch_dim
         # self.device = device
-        
+
         # Create world
         world = World(batch_dim, device, dt=0.1, drag=0.5, dim_c=0)
         # Add agents
         for i in range(self.num_agents):
-            if i == 0: # Agent 0 is mothership
+            if i == 0:  # Agent 0 is mothership
                 agent = Coordinator(
                     name=f"coordinator {i}",
                     collide=True,
@@ -109,7 +108,7 @@ class ScenarioTaskComms(BaseScenario):
                     color=Color.BLUE,
                     u_range=1.0,
                 )
-            else: # All other agents are homogeneous
+            else:  # All other agents are homogeneous
                 agent = Worker(
                     name=f"worker {i}",
                     collide=True,
@@ -132,13 +131,12 @@ class ScenarioTaskComms(BaseScenario):
                 color=Color.RED,
             )
             world.add_landmark(task)
-     
+
         self._done = torch.zeros(batch_dim, device=device, dtype=torch.bool)
 
         return world
-    
 
-    def reset_world_at(self, env_index = None):
+    def reset_world_at(self, env_index=None):
         """Resets the world at the specified env_index.
 
         When a ``None`` index is passed, the world should make a vectorized (batched) reset.
@@ -218,48 +216,46 @@ class ScenarioTaskComms(BaseScenario):
             if "coordinator" in agent.name:
                 agent.set_pos(
                     torch.tensor(
-                            [0.0, 0.0],
-                            dtype=torch.float32,
-                            device=self.world.device,
+                        [0.0, 0.0],
+                        dtype=torch.float32,
+                        device=self.world.device,
                     ),
-                        batch_index=env_index,
+                    batch_index=env_index,
                 )
             else:
                 angle = 2 * math.pi * (i - 1) / self.num_agents
                 agent.set_pos(
                     torch.tensor(
-                            [0.1*math.cos(angle),
-                             0.1*math.sin(angle)],
-                            dtype=torch.float32,
-                            device=self.world.device,
+                        [0.1 * math.cos(angle), 0.1 * math.sin(angle)],
+                        dtype=torch.float32,
+                        device=self.world.device,
                     ),
-                        batch_index=env_index,
+                    batch_index=env_index,
                 )
-            agent.comms_noise = torch.zeros((self.world.batch_dim,),device=self.world.device
+            agent.comms_noise = torch.zeros(
+                (self.world.batch_dim,), device=self.world.device
             )
-                
+
         for i, landmark in enumerate(self.world.landmarks):
             if self.random_tasks:
                 angle = 2 * math.pi * (i) / self.num_tasks
                 landmark.set_pos(
                     torch.tensor(
-                            [math.cos(angle),
-                            math.sin(angle)],
-                            dtype=torch.float32,
-                            device=self.world.device,
+                        [math.cos(angle), math.sin(angle)],
+                        dtype=torch.float32,
+                        device=self.world.device,
                     ),
-                        batch_index=env_index,
+                    batch_index=env_index,
                 )
             else:
                 coords = np.random.rand(2)
                 landmark.set_pos(
                     torch.tensor(
-                            [coords[0],
-                            coords[1]],
-                            dtype=torch.float32,
-                            device=self.world.device,
+                        [coords[0], coords[1]],
+                        dtype=torch.float32,
+                        device=self.world.device,
                     ),
-                        batch_index=env_index,
+                    batch_index=env_index,
                 )
 
             if env_index is None:
@@ -272,7 +268,6 @@ class ScenarioTaskComms(BaseScenario):
                 landmark.complete[env_index] = False
                 landmark.is_rendering[env_index] = True
                 self._done[env_index] = False
-
 
     def observation(self, agent):
         """This function computes the observations for ``agent`` in a vectorized way.
@@ -315,57 +310,65 @@ class ScenarioTaskComms(BaseScenario):
         # NOTE Processing task completion here
         for landmark in self.world.landmarks:
             completion_mask = landmark.complete.clone()
-            abs_dists = (torch.abs(landmark.state.pos - agent.state.pos))
+            abs_dists = torch.abs(landmark.state.pos - agent.state.pos)
             landmark.complete = torch.norm(abs_dists, dim=1) < self.task_comp_thresh
             landmark.complete[completion_mask] = True
-        
+
         output_dict = {}
-        
+
         # Evaluate pos localization with noise
-        if 'coordinator' not in agent.name and self.comms_decay:
+        if "coordinator" not in agent.name and self.comms_decay:
             cum_noises = []
             for a_other in self.world.agents:
                 if a_other.name != agent.name:
                     # print("")
                     # print("Dist to other:\n", torch.norm(a_other.state.pos - agent.state.pos, dim=1))
-                    noise_to_other = torch.exp(self.comms_dec_rate*torch.norm(a_other.state.pos - agent.state.pos, dim=1)-self.comms_dec_rate) #/self.max_random_dist)
+                    noise_to_other = torch.exp(
+                        self.comms_dec_rate
+                        * torch.norm(a_other.state.pos - agent.state.pos, dim=1)
+                        - self.comms_dec_rate
+                    )  # /self.max_random_dist)
                     # print("Noise to other:\n", noise_to_other)
                     cum_noises.append(a_other.comms_noise + noise_to_other)
-                    
+
                     # print("Cumulative noise with other:\n", a_other.comms_noise + noise_to_other)
-            
-            stacked_comms = torch.stack(cum_noises, dim=0)   
-            # print("Stacked comms:\n", stacked_comms)    
+
+            stacked_comms = torch.stack(cum_noises, dim=0)
+            # print("Stacked comms:\n", stacked_comms)
 
             # Find the minimum noise values
             best_comms = torch.min(stacked_comms, dim=0).values
             # print("Best comms:\n", best_comms)
             # NOTE: Treat actual pos as mean, noise as SE. Sample from distro.
             agent.comms_noise = best_comms
-            
+
             # apply noise to pos
             # print("Pos:\n", agent.state.pos, "Noise:\n", agent.comms_noise.unsqueeze(-1).expand(self.batch_dim,2))
-            output_dict['pos'] = torch.normal(agent.state.pos, 
-                                              agent.comms_noise.unsqueeze(-1).expand(self.batch_dim,2))
+            output_dict["pos"] = torch.normal(
+                agent.state.pos,
+                agent.comms_noise.unsqueeze(-1).expand(self.batch_dim, 2),
+            )
             # print("Actual pos:\n", agent.state.pos)
             # print("Noisy pos:\n", output_dict['pos'])
-            
+
         else:
-            output_dict['pos'] = agent.state.pos
-        
+            output_dict["pos"] = agent.state.pos
+
         # agent_rel_poses = []
         for a_other in self.world.agents:
             if a_other.name != agent.name:
-                output_dict[a_other.name+" pos"] = a_other.state.pos - output_dict['pos']
-        
+                output_dict[a_other.name + " pos"] = (
+                    a_other.state.pos - output_dict["pos"]
+                )
+
         # get positions of all landmarks in this agent's reference frame
         for landmark in self.world.landmarks:
-            output_dict[landmark.name+" pos"] = landmark.state.pos - output_dict['pos']
-            output_dict[landmark.name+" status"] = landmark.complete.unsqueeze(-1)
-            
+            output_dict[landmark.name + " pos"] = (
+                landmark.state.pos - output_dict["pos"]
+            )
+            output_dict[landmark.name + " status"] = landmark.complete.unsqueeze(-1)
 
         return output_dict
-
 
     # NOTE we don't use this reward right now
     def reward(self, agent):
@@ -399,10 +402,10 @@ class ScenarioTaskComms(BaseScenario):
         completed_tasks = []
         for landmark in self.world.landmarks:
             completed_tasks.append(landmark.complete)
-        
+
         # print("List:\n", completed_tasks)
         completed_tasks = torch.stack(completed_tasks, dim=1)
         # print("Stacked:\n", completed_tasks)
         rew = torch.sum(completed_tasks, dim=1, dtype=float).unsqueeze(-1)
-        
+
         return rew
