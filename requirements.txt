@@ -3,3 +3,5 @@ torch
 vmas
 gym
 moviepy
+torchrl
+benchmarl

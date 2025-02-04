@@ -4,18 +4,16 @@ from typing import Union
 
 import numpy as np
 import torch
+from modalities.tasks_comms import get_mode_do_comms, get_mode_do_tasks
 from moviepy import ImageSequenceClip
+from scenarios.tasks_comms import ScenarioTaskComms
+from specialization_policy import MultiHeadPolicy
 from vmas import make_env
 from vmas.simulator.scenario import BaseScenario
 
-from modalities.tasks_comms import get_mode_do_comms, get_mode_do_tasks
-from scenarios.tasks_comms import ScenarioTaskComms
-from specialization_policy import SpecializationPolicy
-
 # === EA Stuff ===
 
-
-def tournament_selection(population: list[SpecializationPolicy], tournament_size=10):
+def tournament_selection(population: list[MultiHeadPolicy], tournament_size=10):
     """
     Select one individual using tournament selection. Randomly pick `tournament_size`
     individuals and select the one with the highest fitness.
@@ -25,7 +23,7 @@ def tournament_selection(population: list[SpecializationPolicy], tournament_size
     return best
 
 
-def crossover(parent1: SpecializationPolicy, parent2: SpecializationPolicy):
+def crossover(parent1: MultiHeadPolicy, parent2: MultiHeadPolicy):
     """Perform crossover between two networks."""
     child = copy.deepcopy(parent1)
     child.fitness = None
@@ -35,7 +33,7 @@ def crossover(parent1: SpecializationPolicy, parent2: SpecializationPolicy):
     return child
 
 
-def mutate(policy: SpecializationPolicy, mutation_rate=0.1):
+def mutate(policy: MultiHeadPolicy, mutation_rate=0.1):
     """Mutate a network by adding noise to its parameters."""
     for param in policy.parameters():
         if torch.rand(1).item() < mutation_rate:
@@ -43,7 +41,7 @@ def mutate(policy: SpecializationPolicy, mutation_rate=0.1):
             param.data.add_(noise)
 
 
-def vmas_env_EA_train_static(
+def train_EA_batch_static_env(
     render: bool,
     num_envs: int,
     n_steps: int,
@@ -54,7 +52,7 @@ def vmas_env_EA_train_static(
     **kwargs,
 ):
     """
-    This function trains policies by evaluating batch_dim policies on same sim.
+    This function rapidly trains EA policy by evaluating batch_dim policies on same sim.
 
     Use if we want to train policy for static environment.
 
@@ -95,7 +93,7 @@ def vmas_env_EA_train_static(
 
     # Initialize policy population (one for each env)
     pol_pop = [
-        SpecializationPolicy(
+        MultiHeadPolicy(
             combined_obs.shape[1],
             num_agents - 1,
             num_modes,
@@ -181,7 +179,7 @@ def vmas_env_EA_train_static(
     return best
 
 
-def vmas_env_EA_train_random(
+def train_EA_single_random_env(
     render: bool,
     num_envs: int,
     n_steps: int,
@@ -236,7 +234,7 @@ def vmas_env_EA_train_random(
     # Initialize policy population
     # output_shape = (num_agents-1, env.batch_dim, num_modes)
     pol_pop = [
-        SpecializationPolicy(
+        MultiHeadPolicy(
             combined_obs.shape[1], num_agents - 1, num_modes, device=device
         )
         for _ in range(num_pols)
@@ -289,7 +287,7 @@ def vmas_env_EA_train_random(
                 clip = ImageSequenceClip(frame_list, fps=fps)
                 clip.write_gif(f"img/{scenario_name}.gif", fps=fps)
 
-        # TODO Calculate fitness (average over cum_rews entries)
+        # Calculate fitness (average over cum_rews entries)
         print("Rewards:", rews)
         avg_rew = torch.mean(torch.cat(rews, dim=1))
         pol.fitness = avg_rew.values()
@@ -320,7 +318,7 @@ if __name__ == "__main__":
     modality_funcs = [get_mode_do_tasks, get_mode_do_comms]
     scenario = ScenarioTaskComms()
 
-    trained_pol = vmas_env_EA_train_static(
+    trained_pol = train_EA_batch_static_env(
         scenario=scenario,
         render=render,
         num_envs=num_envs,

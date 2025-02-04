@@ -2,12 +2,11 @@ import math
 
 import numpy as np
 import torch
+from sim.coordinator import Coordinator
+from sim.worker import Worker
 from vmas.simulator.core import Landmark, Sphere, World
 from vmas.simulator.scenario import BaseScenario
 from vmas.simulator.utils import Color
-
-from sim.coordinator import Coordinator
-from sim.worker import Worker
 
 
 class ScenarioTaskComms(BaseScenario):
@@ -321,47 +320,36 @@ class ScenarioTaskComms(BaseScenario):
             cum_noises = []
             for a_other in self.world.agents:
                 if a_other.name != agent.name:
-                    # print("")
-                    # print("Dist to other:\n", torch.norm(a_other.state.pos - agent.state.pos, dim=1))
                     noise_to_other = torch.exp(
                         self.comms_dec_rate
                         * torch.norm(a_other.state.pos - agent.state.pos, dim=1)
                         - self.comms_dec_rate
-                    )  # /self.max_random_dist)
-                    # print("Noise to other:\n", noise_to_other)
+                    )
                     cum_noises.append(a_other.comms_noise + noise_to_other)
 
-                    # print("Cumulative noise with other:\n", a_other.comms_noise + noise_to_other)
-
             stacked_comms = torch.stack(cum_noises, dim=0)
-            # print("Stacked comms:\n", stacked_comms)
 
             # Find the minimum noise values
             best_comms = torch.min(stacked_comms, dim=0).values
-            # print("Best comms:\n", best_comms)
             # NOTE: Treat actual pos as mean, noise as SE. Sample from distro.
             agent.comms_noise = best_comms
 
-            # apply noise to pos
-            # print("Pos:\n", agent.state.pos, "Noise:\n", agent.comms_noise.unsqueeze(-1).expand(self.batch_dim,2))
+            # Apply noise to pos
             output_dict["pos"] = torch.normal(
                 agent.state.pos,
                 agent.comms_noise.unsqueeze(-1).expand(self.batch_dim, 2),
             )
-            # print("Actual pos:\n", agent.state.pos)
-            # print("Noisy pos:\n", output_dict['pos'])
-
         else:
             output_dict["pos"] = agent.state.pos
 
-        # agent_rel_poses = []
+        # Get other agents' positions
         for a_other in self.world.agents:
             if a_other.name != agent.name:
                 output_dict[a_other.name + " pos"] = (
                     a_other.state.pos - output_dict["pos"]
                 )
 
-        # get positions of all landmarks in this agent's reference frame
+        # Get positions of all landmarks in this agent's reference frame
         for landmark in self.world.landmarks:
             output_dict[landmark.name + " pos"] = (
                 landmark.state.pos - output_dict["pos"]
@@ -370,7 +358,6 @@ class ScenarioTaskComms(BaseScenario):
 
         return output_dict
 
-    # NOTE we don't use this reward right now
     def reward(self, agent):
         """This function computes the reward for ``agent`` in a vectorized way.
 
@@ -398,14 +385,12 @@ class ScenarioTaskComms(BaseScenario):
             ...         return rew
         """
 
-        # reward every agent proportionally to distance from first landmark
+        # Reward every agent with sum of completed tasks
         completed_tasks = []
         for landmark in self.world.landmarks:
             completed_tasks.append(landmark.complete)
 
-        # print("List:\n", completed_tasks)
         completed_tasks = torch.stack(completed_tasks, dim=1)
-        # print("Stacked:\n", completed_tasks)
         rew = torch.sum(completed_tasks, dim=1, dtype=float).unsqueeze(-1)
 
         return rew
