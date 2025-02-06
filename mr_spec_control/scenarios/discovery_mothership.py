@@ -7,9 +7,8 @@ from typing import Callable, Dict, List, Union
 
 import torch
 from torch import Tensor
-from vmas import make_env
-from vmas.simulator.core import Agent, Entity, Landmark, Sphere, World
-from vmas.simulator.heuristic_policy import BaseHeuristicPolicy
+from vmas import render_interactively
+from vmas.simulator.core import Agent, Box, Entity, Landmark, Sphere, World
 from vmas.simulator.scenario import BaseScenario
 from vmas.simulator.sensors import Lidar
 from vmas.simulator.utils import Color, ScenarioUtils, X, Y
@@ -20,15 +19,17 @@ if typing.TYPE_CHECKING:
 
 class Scenario(BaseScenario):
     def make_world(self, batch_dim: int, device: torch.device, **kwargs):
-        self.n_agents = kwargs.pop("n_agents", 5)
+        self.n_agents = kwargs.pop("n_agents", 5) + 1 # mothership is extra
         self.n_targets = kwargs.pop("n_targets", 7)
+        self.n_obstacles = kwargs.pop("n_obstacles", 5)
         self.x_semidim = kwargs.pop("x_semidim", 1)
         self.y_semidim = kwargs.pop("y_semidim", 1)
-        self._min_dist_between_entities = kwargs.pop("min_dist_between_entities", 0.2)
-        self._lidar_range = kwargs.pop("lidar_range", 0.35)
-        self._covering_range = kwargs.pop("covering_range", 0.25)
+        self._min_dist_between_entities = kwargs.pop("min_dist_between_entities", 0.25)
+        self._lidar_range = kwargs.pop("lidar_range", 0.25)
+        self._covering_range = kwargs.pop("covering_range", 0.15)
 
         self.use_agent_lidar = kwargs.pop("use_agent_lidar", False)
+        self.use_obstacle_lidar = kwargs.pop("use_obstacle_lidar", False)
         self.n_lidar_rays_entities = kwargs.pop("n_lidar_rays_entities", 15)
         self.n_lidar_rays_agents = kwargs.pop("n_lidar_rays_agents", 12)
 
@@ -41,9 +42,9 @@ class Scenario(BaseScenario):
         self.time_penalty = kwargs.pop("time_penalty", 0)
         ScenarioUtils.check_kwargs_consumed(kwargs)
 
-        self._comms_range = self._lidar_range
+        self._comms_range = 1.5*self._lidar_range
         self.min_collision_distance = 0.005
-        self.agent_radius = 0.05
+        self.agent_radius = 0.025
         self.target_radius = self.agent_radius
 
         self.viewer_zoom = 1
@@ -60,19 +61,32 @@ class Scenario(BaseScenario):
             drag=0.25,
         )
 
-        # Add agents
-        entity_filter_agents: Callable[[Entity], bool] = lambda e: e.name.startswith(
-            "agent"
-        )
-        entity_filter_targets: Callable[[Entity], bool] = lambda e: e.name.startswith(
-            "target"
-        )
-        for i in range(self.n_agents):
+        # Lidar filters
+        entity_filter_agents: Callable[[Entity], bool] = lambda e: e.name.startswith("agent")
+
+        entity_filter_targets: Callable[[Entity], bool] = lambda e: e.name.startswith("target")
+
+        entity_filter_obstacles: Callable[[Entity], bool] = lambda e: e.name.startswith("obstacle")
+
+        # Initialize coordinator
+        mothership = Agent(name="mothership",
+                collide=True,
+                shape=Sphere(radius=1.5*self.agent_radius),
+                movable=False,
+                )
+        mothership.collision_rew = torch.zeros(batch_dim, device=device)
+        mothership.covering_reward = mothership.collision_rew.clone()
+        world.add_agent(mothership)
+
+        # Initialize workers
+        for i in range(self.n_agents-1):
             # Constraint: all agents have same action range and multiplier
             agent = Agent(
                 name=f"agent_{i}",
                 collide=True,
                 shape=Sphere(radius=self.agent_radius),
+                mass=100,
+                max_speed=1.0,
                 sensors=(
                     [
                         Lidar(
@@ -98,6 +112,21 @@ class Scenario(BaseScenario):
                         if self.use_agent_lidar
                         else []
                     )
+                    + (
+                        [
+                            Lidar(
+                                world,
+                                angle_start=0.1,
+                                angle_end=2 * torch.pi + 0.1,
+                                n_rays=self.n_lidar_rays_agents,
+                                max_range=self._lidar_range,
+                                entity_filter=entity_filter_obstacles,
+                                render_color=Color.RED,
+                            )
+                        ]
+                        if self.use_obstacle_lidar
+                        else []
+                    )
                 ),
             )
             agent.collision_rew = torch.zeros(batch_dim, device=device)
@@ -119,10 +148,25 @@ class Scenario(BaseScenario):
         self.covered_targets = torch.zeros(batch_dim, self.n_targets, device=device)
         self.shared_covering_rew = torch.zeros(batch_dim, device=device)
 
+        self._obstacles = []
+        for i in range(self.n_obstacles):
+            length = torch.rand(1).item()*0.25 + 0.1
+            width = torch.rand(1).item()*0.25 + 0.1
+            obstacle = Landmark(
+                name=f"obstacle_{i}",
+                collide=True,
+                movable=False,
+                shape=Box(length=length, width=width),
+                color=Color.GRAY,
+            )
+            world.add_landmark(obstacle)
+            self._obstacles.append(obstacle)
+
         return world
 
     def reset_world_at(self, env_index: int = None):
-        placable_entities = self._targets[: self.n_targets] + self.world.agents
+        """Reset world at the given environment index"""
+        # First-time startup
         if env_index is None:
             self.all_time_covered_targets = torch.full(
                 (self.world.batch_dim, self.n_targets),
@@ -131,6 +175,12 @@ class Scenario(BaseScenario):
             )
         else:
             self.all_time_covered_targets[env_index] = False
+
+        # Place entities
+        placable_entities = self._obstacles[: self.n_obstacles] + \
+            self._targets[: self.n_targets] + \
+                [self.world.agents[0]] # put mothership randomly
+
         ScenarioUtils.spawn_entities_randomly(
             entities=placable_entities,
             world=self.world,
@@ -142,10 +192,23 @@ class Scenario(BaseScenario):
         for target in self._targets[self.n_targets :]:
             target.set_pos(self.get_outside_pos(env_index), batch_index=env_index)
 
+        # Spawn workers around mothership
+        mothership_pos = self.world.agents[0].state.pos
+        for agent in self.world.agents[1:]:
+            agent.set_pos(mothership_pos + (torch.rand(1, 2)*2 - 1)*0.1, batch_index=env_index)
+
+
     def reward(self, agent: Agent):
-        is_first = agent == self.world.agents[0]
+        """Reward completing targets, avoiding collisions with agents, and time penalty"""
+
+        # TODO Compute mothership reward
+        if agent.name == "mothership":
+            return torch.zeros(self.world.batch_dim, device=self.world.device)
+
+        is_first = agent == self.world.agents[1] # 0 is mothership
         is_last = agent == self.world.agents[-1]
 
+        # Time reward, Covering reward
         if is_first:
             self.time_rew = torch.full(
                 (self.world.batch_dim,),
@@ -165,17 +228,25 @@ class Scenario(BaseScenario):
 
             self.shared_covering_rew[:] = 0
             for a in self.world.agents:
-                self.shared_covering_rew += self.agent_reward(a)
+                self.shared_covering_rew += self.worker_covering_reward(a)
             self.shared_covering_rew[self.shared_covering_rew != 0] /= 2
 
-        # Avoid collisions with each other
-        agent.collision_rew[:] = 0
-        for a in self.world.agents:
-            if a != agent:
-                agent.collision_rew[
-                    self.world.get_distance(a, agent) < self.min_collision_distance
-                ] += self.agent_collision_penalty
+        covering_rew = (
+            agent.covering_reward
+            if not self.shared_reward
+            else self.shared_covering_rew
+        )
 
+        # Collision avoidance reward
+        # TODO - Did away with this for now
+        agent.collision_rew[:] = 0
+        # for a in self.world.agents:
+        #     if a != agent:
+        #         agent.collision_rew[
+        #             self.world.get_distance(a, agent) < self.min_collision_distance
+        #         ] += self.agent_collision_penalty
+
+        # Respawn targets
         if is_last:
             if self.targets_respawn:
                 occupied_positions_agents = [self.agents_pos]
@@ -207,11 +278,6 @@ class Scenario(BaseScenario):
                     target.state.pos[self.covered_targets[:, i]] = self.get_outside_pos(
                         None
                     )[self.covered_targets[:, i]]
-        covering_rew = (
-            agent.covering_reward
-            if not self.shared_reward
-            else self.shared_covering_rew
-        )
 
         return agent.collision_rew + covering_rew + self.time_rew
 
@@ -225,7 +291,8 @@ class Scenario(BaseScenario):
             device=self.world.device,
         ).uniform_(-1000 * self.world.x_semidim, -10 * self.world.x_semidim)
 
-    def agent_reward(self, agent):
+    def worker_covering_reward(self, agent):
+        """Reward for covering targets"""
         agent_index = self.world.agents.index(agent)
 
         agent.covering_reward[:] = 0
@@ -241,10 +308,27 @@ class Scenario(BaseScenario):
         return agent.covering_reward
 
     def observation(self, agent: Agent):
+        """Return sparse global obs for the coordinator and local obs for workers"""
+        # Mothership obs (global agents & tasks)
+        if agent.name == "mothership":
+            mothership_pos = agent.state.pos.unsqueeze(1)
+            worker_pos = torch.stack(
+                [a.state.pos for a in self.world.agents[1:]], dim=1
+            )
+            worker_vel = torch.stack(
+                [a.state.vel for a in self.world.agents[1:]], dim=1
+            )
+            target_pos = torch.stack([t.state.pos for t in self._targets], dim=1)
+            return torch.cat(
+                [mothership_pos, worker_pos, worker_vel, target_pos], dim=1
+            )
+
+        # Worker obs (local lidar scans)
         lidar_1_measures = agent.sensors[0].measure()
         return torch.cat(
             [agent.state.pos, agent.state.vel, lidar_1_measures]
-            + ([agent.sensors[1].measure()] if self.use_agent_lidar else []),
+            + ([agent.sensors[1].measure()] if self.use_agent_lidar else [])
+            + ([agent.sensors[2].measure()] if self.use_obstacle_lidar else []),
             dim=-1,
         )
 
@@ -284,7 +368,7 @@ class Scenario(BaseScenario):
                     agent1.state.pos - agent2.state.pos, dim=-1
                 )
                 if agent_dist[env_index] <= self._comms_range:
-                    color = Color.BLACK.value
+                    color = Color.RED.value
                     line = rendering.Line(
                         (agent1.state.pos[env_index]),
                         (agent2.state.pos[env_index]),
@@ -298,154 +382,7 @@ class Scenario(BaseScenario):
         return geoms
 
 
-class HeuristicPolicy(BaseHeuristicPolicy):
-    def compute_action(self, observation: torch.Tensor, u_range: float) -> torch.Tensor:
-        assert self.continuous_actions
-
-        # First calculate the closest point to a circle of radius circle_radius given the current position
-        circle_origin = torch.zeros(1, 2, device=observation.device)
-        circle_radius = 0.75
-        current_pos = observation[:, :2]
-        v = current_pos - circle_origin
-        closest_point_on_circ = (
-            circle_origin + v / torch.linalg.norm(v, dim=1).unsqueeze(1) * circle_radius
-        )
-
-        # calculate the normal vector of the vector from the origin of the circle to that closest point
-        # on the circle. Adding this scaled normal vector to the other vector gives us a target point we
-        # try to reach, thus resulting in a circular motion.
-        closest_point_on_circ_normal = torch.stack(
-            [closest_point_on_circ[:, Y], -closest_point_on_circ[:, X]], dim=1
-        )
-        closest_point_on_circ_normal /= torch.linalg.norm(
-            closest_point_on_circ_normal, dim=1
-        ).unsqueeze(1)
-        closest_point_on_circ_normal *= 0.1
-        des_pos = closest_point_on_circ + closest_point_on_circ_normal
-
-        # Move towards targets within visibility range
-        lidar_targets = observation[:, 4:19]
-        target_visible = torch.any(lidar_targets < 0.3, dim=1)
-        _, target_dir_index = torch.min(lidar_targets, dim=1)
-        target_dir = target_dir_index / lidar_targets.shape[1] * 2 * torch.pi
-        target_vec = torch.stack([torch.cos(target_dir), torch.sin(target_dir)], dim=1)
-        des_pos_target = current_pos + target_vec * 0.1
-        des_pos[target_visible] = des_pos_target[target_visible]
-
-        if observation.shape[-1] > 19:
-            # Move away from other agents within visibility range
-            lidar_agents = observation[:, 19:31]
-            agent_visible = torch.any(lidar_agents < 0.15, dim=1)
-            _, agent_dir_index = torch.min(lidar_agents, dim=1)
-            agent_dir = agent_dir_index / lidar_agents.shape[1] * 2 * torch.pi
-            agent_vec = torch.stack([torch.cos(agent_dir), torch.sin(agent_dir)], dim=1)
-            des_pos_agent = current_pos - agent_vec * 0.1
-            des_pos[agent_visible] = des_pos_agent[agent_visible]
-
-        action = torch.clamp(
-            (des_pos - current_pos) * 10,
-            min=-u_range,
-            max=u_range,
-        )
-
-        return action
-
-
-def _get_deterministic_action(agent: Agent, continuous: bool, env):
-    if continuous:
-        action = -agent.action.u_range_tensor.expand(env.batch_dim, agent.action_size)
-    else:
-        action = (
-            torch.tensor([1], device=env.device, dtype=torch.long)
-            .unsqueeze(-1)
-            .expand(env.batch_dim, 1)
-        )
-    return action.clone()
-
-
-def use_vmas_env(
-    render: bool,
-    num_envs: int,
-    n_steps: int,
-    device: str,
-    scenario: Union[str, BaseScenario],
-    continuous_actions: bool,
-    random_action: bool,
-    **kwargs,
-):
-    """Example function to use a vmas environment.
-
-    This is a simplification of the function in `vmas.examples.use_vmas_env.py`.
-
-    Args:
-        continuous_actions (bool): Whether the agents have continuous or discrete actions
-        scenario (str): Name of scenario
-        device (str): Torch device to use
-        render (bool): Whether to render the scenario
-        num_envs (int): Number of vectorized environments
-        n_steps (int): Number of steps before returning done
-        random_action (bool): Use random actions or have all agents perform the down action
-
-    """
-
-    scenario_name = (
-        scenario if isinstance(scenario, str) else scenario.__class__.__name__
-    )
-
-    env = make_env(
-        scenario=scenario,
-        num_envs=num_envs,
-        device=device,
-        continuous_actions=continuous_actions,
-        seed=0,
-        # Environment specific variables
-        **kwargs,
-    )
-
-    frame_list = []  # For creating a gif
-    step = 0
-
-    for s in range(n_steps):
-        step += 1
-        print(f"Step {step}")
-
-        actions = []
-        for i, agent in enumerate(env.agents):
-            if not random_action:
-                action = _get_deterministic_action(agent, continuous_actions, env)
-            else:
-                action = env.get_random_action(agent)
-
-            actions.append(action)
-
-        obs, rews, dones, info = env.step(actions)
-
-        if render:
-            frame = env.render(
-                mode="rgb_array",
-                agent_index_focus=None,  # Can give the camera an agent index to focus on
-            )
-            frame_list.append(frame)
-
-    if render:
-        from moviepy import ImageSequenceClip
-
-        fps = 30
-        clip = ImageSequenceClip(frame_list, fps=fps)
-        clip.write_gif(f"{scenario_name}.gif", fps=fps)
-
 
 if __name__ == "__main__":
     scenario = Scenario()
-
-    use_vmas_env(
-        scenario=scenario,
-        render=True,
-        num_envs=32,
-        n_steps=100,
-        device="cuda",
-        continuous_actions=False,
-        random_action=False,
-        # Environment specific variables
-        n_agents=4,
-    )
+    render_interactively(scenario, control_two_agents=True)
