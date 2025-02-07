@@ -33,7 +33,7 @@ class Scenario(BaseScenario):
         self.n_lidar_rays_entities = kwargs.pop("n_lidar_rays_entities", 15)
         self.n_lidar_rays_agents = kwargs.pop("n_lidar_rays_agents", 12)
 
-        self._agents_per_target = kwargs.pop("agents_per_target", 2)
+        self._agents_per_target = kwargs.pop("agents_per_target", 1)
         self.targets_respawn = kwargs.pop("targets_respawn", True)
         self.shared_reward = kwargs.pop("shared_reward", False)
 
@@ -85,8 +85,8 @@ class Scenario(BaseScenario):
                 name=f"agent_{i}",
                 collide=True,
                 shape=Sphere(radius=self.agent_radius),
-                mass=100,
-                max_speed=1.0,
+                mass=10,
+                max_speed=2.0,
                 sensors=(
                     [
                         Lidar(
@@ -385,4 +385,4 @@ class Scenario(BaseScenario):
 
 if __name__ == "__main__":
     scenario = Scenario()
-    render_interactively(scenario, control_two_agents=True)
+    render_interactively(scenario)

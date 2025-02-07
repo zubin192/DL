@@ -1,17 +1,17 @@
 {
-  "name": "Mothership-Passenger Coordination",
-  // "dockerFile": "Dockerfile",
-  // "context": "..",
+  "name": "Mothership",
+  "dockerFile": "Dockerfile",
+  "context": "..",
   "runArgs": [
     "--gpus=all"
   ],
   // "mounts": [
   //   "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind"
   // ],
-  "build": {
-    "dockerfile": "Dockerfile",
-    "context": ".."
-  },
+  // "build": {
+  //   "dockerfile": "Dockerfile",
+  //   "context": ".."
+  // },
   "remoteUser": "project",
   "customizations": {
     "vscode": {
