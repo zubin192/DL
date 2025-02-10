@@ -5,3 +5,4 @@ gym
 moviepy
 torchrl
 benchmarl
+pyvirtualdisplay

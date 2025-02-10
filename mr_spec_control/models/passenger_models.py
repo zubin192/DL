@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, MISSING
-from typing import Type
+from typing import Optional, Sequence, Type
 
 import torch
 
@@ -12,7 +12,10 @@ from torch import nn
 from torchrl.modules import MLP, MultiAgentMLP
 
 
-class CustomModel(Model):
+class SpecializedPolicy(Model):
+
+
+
     def __init__(
         self,
         custom_param: int,
@@ -172,18 +175,16 @@ class CustomModel(Model):
 @dataclass
 class CustomModelConfig(ModelConfig):
 
-    # The config parameters for this class, these will be loaded from yaml
-    custom_param: int = MISSING
+    num_cells: Sequence[int] = MISSING
+    layer_class: Type[nn.Module] = MISSING
+
     activation_class: Type[nn.Module] = MISSING
+    activation_kwargs: Optional[dict] = None
+
+    norm_class: Type[nn.Module] = None
+    norm_kwargs: Optional[dict] = None
 
     @staticmethod
     def associated_class():
         # The associated algorithm class
-        return CustomModel
-
-    @property
-    def is_rnn(self) -> bool:
-        """
-        Whether the model is an RNN
-        """
-        return False
+        return SpecializedPolicy

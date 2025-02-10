@@ -40,15 +40,16 @@ class Scenario(BaseScenario):
         self.agent_collision_penalty = kwargs.pop("agent_collision_penalty", 0)
         self.covering_rew_coeff = kwargs.pop("covering_rew_coeff", 1.0)
         self.time_penalty = kwargs.pop("time_penalty", 0)
-        ScenarioUtils.check_kwargs_consumed(kwargs)
 
-        self._comms_range = 1.5*self._lidar_range
-        self.min_collision_distance = 0.005
-        self.agent_radius = 0.025
+        self._comms_range = kwargs.pop("comms_range", 1.5*self._lidar_range)
+        self.min_collision_distance = kwargs.pop("min_collision_distance", 0.005)
+        self.agent_radius = kwargs.pop("agent_radius", 0.025)
         self.target_radius = self.agent_radius
 
         self.viewer_zoom = 1
         self.target_color = Color.GREEN
+
+        ScenarioUtils.check_kwargs_consumed(kwargs)
 
         # Make world
         world = World(
@@ -69,24 +70,29 @@ class Scenario(BaseScenario):
         entity_filter_obstacles: Callable[[Entity], bool] = lambda e: e.name.startswith("obstacle")
 
         # Initialize coordinator
-        mothership = Agent(name="mothership",
-                collide=True,
-                shape=Sphere(radius=1.5*self.agent_radius),
-                movable=False,
-                )
-        mothership.collision_rew = torch.zeros(batch_dim, device=device)
-        mothership.covering_reward = mothership.collision_rew.clone()
-        world.add_agent(mothership)
+        # mothership =
+        # mothership.collision_rew = torch.zeros(batch_dim, device=device)
+        # mothership.covering_reward = mothership.collision_rew.clone()
+        # world.add_agent(mothership)
 
         # Initialize workers
-        for i in range(self.n_agents-1):
+        for i in range(self.n_agents):
+            # Mothership
+            if i == 0:
+                name = "mothership"
+                movable = False
+            else:
+                name = f"passenger_{i}"
+                movable = True
+
             # Constraint: all agents have same action range and multiplier
             agent = Agent(
-                name=f"agent_{i}",
+                name=name,
                 collide=True,
                 shape=Sphere(radius=self.agent_radius),
                 mass=10,
                 max_speed=2.0,
+                movable=movable,
                 sensors=(
                     [
                         Lidar(
@@ -310,27 +316,27 @@ class Scenario(BaseScenario):
     def observation(self, agent: Agent):
         """Return sparse global obs for the coordinator and local obs for workers"""
         # Mothership obs (global agents & tasks)
-        if agent.name == "mothership":
-            mothership_pos = agent.state.pos.unsqueeze(1)
-            worker_pos = torch.stack(
+        obs = {}
+        # if agent.name == "mothership":
+        obs["pos"] = agent.state.pos.unsqueeze(1)
+        obs["vel"] = agent.state.vel.unsqueeze(1)
+        obs["worker_pos"] = worker_pos = torch.stack(
                 [a.state.pos for a in self.world.agents[1:]], dim=1
             )
-            worker_vel = torch.stack(
+        obs["worker_vel"] = torch.stack(
                 [a.state.vel for a in self.world.agents[1:]], dim=1
             )
-            target_pos = torch.stack([t.state.pos for t in self._targets], dim=1)
-            return torch.cat(
-                [mothership_pos, worker_pos, worker_vel, target_pos], dim=1
-            )
+        obs["target_pos"] = torch.stack([t.state.pos for t in self._targets], dim=1)
 
         # Worker obs (local lidar scans)
-        lidar_1_measures = agent.sensors[0].measure()
-        return torch.cat(
-            [agent.state.pos, agent.state.vel, lidar_1_measures]
-            + ([agent.sensors[1].measure()] if self.use_agent_lidar else [])
-            + ([agent.sensors[2].measure()] if self.use_obstacle_lidar else []),
-            dim=-1,
-        )
+        obs["lidar_1_measures"] = agent.sensors[0].measure()
+        if self.use_agent_lidar:
+            obs["agent_lidar"] = agent.sensors[1].measure()
+        if self.use_obstacle_lidar:
+            obs["obstacle_lidar"] = agent.sensors[2].measure()
+
+        return obs
+
 
     def info(self, agent: Agent) -> Dict[str, Tensor]:
         info = {

@@ -1,0 +1,5 @@
+# Add discovery_mothership args
+
+defaults:
+  - custom_vmas_discovery_mothership_config
+  - _self_
