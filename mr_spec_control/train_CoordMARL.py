@@ -126,6 +126,11 @@ if __name__ == "__main__":
     # Loads from "benchmarl/conf/model/layers/mlp.yaml"
     model_config = MlpConfig.get_from_yaml()
     critic_model_config = MlpConfig.get_from_yaml()
+    # model_config = MlpConfig(
+    #     num_cells=[256, 256], # Two layers with 256 neurons each
+    #     layer_class=torch.nn.Linear,
+    #     activation_class=torch.nn.Tanh,
+    # )
 
     # Load experiment configuration
     experiment_config = ExperimentConfig.get_from_yaml()
@@ -156,8 +161,8 @@ if __name__ == "__main__":
         config=experiment_config,
     )
 
-    experiment.algorithm.group_map["mothership"] = ["mothership"]
-    experiment.algorithm.group_map["passengers"] = ["passenger_0", "passenger_1", "passenger_2", "passenger_3"]
+    # experiment.algorithm.group_map["mothership"] = ["mothership"]
+    # experiment.algorithm.group_map["passengers"] = ["passenger_0", "passenger_1", "passenger_2", "passenger_3"]
 
     # exp_json_file = str(Path(experiment.folder_name) / Path(experiment.name + ".json"))
 

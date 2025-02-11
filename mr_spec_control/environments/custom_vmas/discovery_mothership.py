@@ -153,6 +153,7 @@ class Scenario(BaseScenario):
 
         self.covered_targets = torch.zeros(batch_dim, self.n_targets, device=device)
         self.shared_covering_rew = torch.zeros(batch_dim, device=device)
+        self.time_rew = torch.zeros(batch_dim, device=device)
 
         self._obstacles = []
         for i in range(self.n_obstacles):
@@ -208,8 +209,8 @@ class Scenario(BaseScenario):
         """Reward completing targets, avoiding collisions with agents, and time penalty"""
 
         # TODO Compute mothership reward
-        if agent.name == "mothership":
-            return torch.zeros(self.world.batch_dim, device=self.world.device)
+        # if agent.name == "mothership":
+        #     return torch.zeros(self.world.batch_dim, device=self.world.device)
 
         is_first = agent == self.world.agents[1] # 0 is mothership
         is_last = agent == self.world.agents[-1]
@@ -322,15 +323,15 @@ class Scenario(BaseScenario):
         # Mothership obs (global agents & tasks)
         obs = {}
         # if agent.name == "mothership":
-        obs["pos"] = agent.state.pos.unsqueeze(1)
-        obs["vel"] = agent.state.vel.unsqueeze(1)
-        obs["worker_pos"] = worker_pos = torch.stack(
+        obs["pos"] = agent.state.pos
+        obs["vel"] = agent.state.vel
+        obs["worker_pos"] = torch.cat(
                 [a.state.pos for a in self.world.agents[1:]], dim=1
             )
-        obs["worker_vel"] = torch.stack(
+        obs["worker_vel"] = torch.cat(
                 [a.state.vel for a in self.world.agents[1:]], dim=1
             )
-        obs["target_pos"] = torch.stack([t.state.pos for t in self._targets], dim=1)
+        obs["target_pos"] = torch.cat([t.state.pos for t in self._targets], dim=1)
 
         # Worker obs (local lidar scans)
         obs["lidar_1_measures"] = agent.sensors[0].measure()
@@ -339,9 +340,8 @@ class Scenario(BaseScenario):
         if self.use_obstacle_lidar:
             obs["obstacle_lidar"] = agent.sensors[2].measure()
 
-
-        for o in obs:
-            print(f"!! Observation {o} Shape: {obs[o].shape}")
+        # for o in obs:
+        #     print(f"!! Observation {o} Shape: {obs[o].shape} \n {obs[o]}")
 
         return obs
 
