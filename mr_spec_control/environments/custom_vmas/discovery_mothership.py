@@ -314,7 +314,11 @@ class Scenario(BaseScenario):
         return agent.covering_reward
 
     def observation(self, agent: Agent):
-        """Return sparse global obs for the coordinator and local obs for workers"""
+        """Return sparse global obs for the coordinator and local obs for workers
+
+        The returned tensor should contain the observations for ``agent`` in all envs and should have
+        shape ``(self.world.batch_dim, n_agent_obs)``, or be a dict with leaves following that shape.
+        """
         # Mothership obs (global agents & tasks)
         obs = {}
         # if agent.name == "mothership":
@@ -334,6 +338,10 @@ class Scenario(BaseScenario):
             obs["agent_lidar"] = agent.sensors[1].measure()
         if self.use_obstacle_lidar:
             obs["obstacle_lidar"] = agent.sensors[2].measure()
+
+
+        for o in obs:
+            print(f"!! Observation {o} Shape: {obs[o].shape}")
 
         return obs
 

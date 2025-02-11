@@ -86,14 +86,19 @@ from environments.custom_vmas.common import CustomVmasTask
 
 if __name__ == "__main__":
 
+    # ==== INFRASTRUCTURE TODOs ====
+    # TODO: Fix observation dimensions
+    # TODO: Implement initial passenger MLP model, get sim running
+    # TODO: Implement initial mothership MAT model, get sim running
+    # TODO:  Get mothership model output to passenger model input
 
-    # TODO: Implement passenger MLP model
-    # TODO: Implement mothership MAT model
-    # TODO: Learning algorithm modification?
-    # TODO: Communications: Get mothership model output to passenger model input
+    # ==== METHOD/DESIGN TODOs ====
     # TODO: Figure out mothership reward. Same as passengers'?
     # TODO: Figure out critic model(s) - same critic for all? Mask out to specific passengers?
         # One for mothership, one for passengeres?
+
+    # ==== EXPERIMENT TODOs ====
+    # TODO for Class: Everything should be in place to run mixed-obs experiments
 
     # Hyperparameters
     train_device = "cpu" # @param {"type":"string"}
@@ -154,7 +159,7 @@ if __name__ == "__main__":
     experiment.algorithm.group_map["mothership"] = ["mothership"]
     experiment.algorithm.group_map["passengers"] = ["passenger_0", "passenger_1", "passenger_2", "passenger_3"]
 
-    exp_json_file = str(Path(experiment.folder_name) / Path(experiment.name + ".json"))
+    # exp_json_file = str(Path(experiment.folder_name) / Path(experiment.name + ".json"))
 
     # Run experiment
     experiment.run()

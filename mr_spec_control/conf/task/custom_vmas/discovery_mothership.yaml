@@ -1,5 +1,15 @@
 # Add discovery_mothership args
 
 defaults:
-  - custom_vmas_discovery_mothership_config
+  - vmas_discovery_config_custom
   - _self_
+
+
+max_steps: 100
+n_agents: 5
+n_targets: 7
+lidar_range: 0.35
+covering_range: 0.25
+agents_per_target: 2
+targets_respawn: True
+shared_reward: True
