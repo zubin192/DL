@@ -202,7 +202,7 @@ class Scenario(BaseScenario):
         # Spawn workers around mothership
         mothership_pos = self.world.agents[0].state.pos
         for agent in self.world.agents[1:]:
-            agent.set_pos(mothership_pos + (torch.rand(1, 2)*2 - 1)*0.1, batch_index=env_index)
+            agent.set_pos(mothership_pos + (torch.rand(1, 2, device=self.world.device)*2 - 1)*0.1, batch_index=env_index)
 
 
     def reward(self, agent: Agent):

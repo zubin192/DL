@@ -101,13 +101,16 @@ if __name__ == "__main__":
     # TODO for Class: Everything should be in place to run mixed-obs experiments
 
     # Hyperparameters
-    train_device = "cpu" # @param {"type":"string"}
-    vmas_device = "cpu" # @param {"type":"string"}
+    train_device = "cuda" # @param {"type":"string"}
+    vmas_device = "cuda" # @param {"type":"string"}
     num_envs = 8 # @param {"type":"integer"}
 
     # Load task configuration
     task_config_path = "mr_spec_control/conf/task/custom_vmas/discovery_mothership.yaml"
-    task = CustomVmasTask.DISCOVERY_MOTHERSHIP.get_from_yaml(task_config_path)
+    task_config_path = "mr_spec_control/conf/task/custom_vmas/example.yaml"
+    # task = CustomVmasTask.DISCOVERY_MOTHERSHIP.get_from_yaml(task_config_path)
+    task = CustomVmasTask.EXAMPLE.get_from_yaml(task_config_path)
+
     # task.config = {
     #     "max_steps": 100,
     #     "n_agents_holonomic": 4,
@@ -121,6 +124,17 @@ if __name__ == "__main__":
     # Load RL algorithm config
     # Loads from "benchmarl/conf/algorithm/mappo.yaml"
     algorithm_config = MappoConfig.get_from_yaml()
+    # algorithm_config = MappoConfig(
+    #     share_param_critic=True, # Critic param sharing on
+    #     clip_epsilon=0.2,
+    #     entropy_coef=0.001, # We modify this, default is 0
+    #     critic_coef=1,
+    #     loss_critic_type="l2",
+    #     lmbda=0.9,
+    #     scale_mapping="biased_softplus_1.0", # Mapping for standard deviation
+    #     use_tanh_normal=True,
+    #     minibatch_advantage=False,
+    # )
 
     # Load policy model configs
     # Loads from "benchmarl/conf/model/layers/mlp.yaml"
