@@ -6,11 +6,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, MISSING
+from dataclasses import MISSING, dataclass
 from typing import Type
 
 import torch
-
 from benchmarl.models.common import Model, ModelConfig
 from tensordict import TensorDictBase
 from torch import nn
@@ -45,34 +44,27 @@ class CustomModel(Model):
 
         # The following are some of the most important attributes of the model.
         # They decide how the model should be used.
-        # Since models can be used for actors and critics, the model will behave differently
-        # depending on how these attributes are set.
-        # BenchMARL will take care of setting these attributes for you, but your role when making
-        # a custom model is making sure that all cases are handled properly
+        # Since models can be used for actors and critics, the model will behave differently depending on how these attributes are set.
+        # BenchMARL will take care of setting these attributes for you, but your role when making a custom model is making sure that all cases are handled properly
 
         # This tells the model if the input will have a multi-agent dimension or not.
         # For example, the input of policies will always have this set to true,
-        # but critics that use a global state have this set to false as the state
-        # is shared by all agents
+        # but critics that use a global state have this set to false as the state is shared by all agents
         _ = self.input_has_agent_dim
 
         # This tells the model if it should have only one set of parameters
         # or a different set of parameters for each agent.
-        # This is independent of the other options as it is possible to have different parameters
-        # for centralized critics with global input
+        # This is independent of the other options as it is possible to have different parameters for centralized critics with global input
         _ = self.share_params
 
-        # This tells the model if it has full observability
+        # This tells the model if it has full observability.
         # This will always be true when self.input_has_agent_dim==False
-        # but in cases where the input has the agent dimension, this parameter is
-        # used to distinguish between a decentralised model (where each agent's data
-        # is processed separately) and a centralized model, where the model pools all data together
+        # but in cases where the input has the agent dimension, this parameter is used to distinguish between a decentralised model (where each agent's data is processed separately) and a centralized model, where the model pools all data together
         _ = self.centralised
 
         # This is a dynamically computed attribute that indicates if the output will have the agent dimension.
         # This will be false when share_params==True and centralised==True, and true in all other cases.
-        # When output_has_agent_dim is true, your model's output should contain the multiagent dimension,
-        # and the dimension should be absent otherwise
+        # When output_has_agent_dim is true, your model's output should contain the multiagent dimension, and the dimension should be absent otherwise
         _ = self.output_has_agent_dim
 
         self.input_features = sum(

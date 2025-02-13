@@ -5,7 +5,6 @@ from pathlib import Path
 from benchmarl.algorithms import MappoConfig
 from benchmarl.experiment import Experiment, ExperimentConfig
 from benchmarl.models.mlp import MlpConfig
-
 from environments.custom_vmas.common import CustomVmasTask
 
 # !apt-get update
@@ -101,16 +100,15 @@ if __name__ == "__main__":
     # TODO for Class: Everything should be in place to run mixed-obs experiments
 
     # Hyperparameters
-    train_device = "cuda" # @param {"type":"string"}
-    vmas_device = "cuda" # @param {"type":"string"}
+    train_device = "cpu" # @param {"type":"string"}
+    vmas_device = "cpu" # @param {"type":"string"}
     num_envs = 8 # @param {"type":"integer"}
 
     # Load task configuration
-    task_config_path = "mr_spec_control/conf/task/custom_vmas/discovery_mothership.yaml"
+    # task_config_path = "mr_spec_control/conf/task/custom_vmas/discovery_mothership.yaml"
     task_config_path = "mr_spec_control/conf/task/custom_vmas/example.yaml"
     # task = CustomVmasTask.DISCOVERY_MOTHERSHIP.get_from_yaml(task_config_path)
     task = CustomVmasTask.EXAMPLE.get_from_yaml(task_config_path)
-
     # task.config = {
     #     "max_steps": 100,
     #     "n_agents_holonomic": 4,
