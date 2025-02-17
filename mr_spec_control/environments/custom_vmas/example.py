@@ -337,7 +337,7 @@ class Scenario(BaseScenario):
             "vel": agent.state.vel,
         }
         if not isinstance(agent.dynamics, Holonomic):
-            # Non hoonomic agents need to know angular states
+            # Non holonomic agents need to know angular states
             obs.update(
                 {
                     "rot": agent.state.rot,

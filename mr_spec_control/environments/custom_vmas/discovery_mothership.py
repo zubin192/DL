@@ -8,7 +8,7 @@ from typing import Callable, Dict, List, Union
 import torch
 from torch import Tensor
 from vmas import render_interactively
-from vmas.simulator.core import Agent, Box, Entity, Landmark, Sphere, World
+from vmas.simulator.core import Agent, Action, Box, Entity, Landmark, Sphere, World
 from vmas.simulator.scenario import BaseScenario
 from vmas.simulator.sensors import Lidar
 from vmas.simulator.utils import Color, ScenarioUtils, X, Y
@@ -28,8 +28,8 @@ class Scenario(BaseScenario):
         self._lidar_range = kwargs.pop("lidar_range", 0.25)
         self._covering_range = kwargs.pop("covering_range", 0.15)
 
-        self.use_agent_lidar = kwargs.pop("use_agent_lidar", False)
-        self.use_obstacle_lidar = kwargs.pop("use_obstacle_lidar", False)
+        self.use_agent_lidar = kwargs.pop("use_agent_lidar", True)
+        self.use_obstacle_lidar = kwargs.pop("use_obstacle_lidar", True)
         self.n_lidar_rays_entities = kwargs.pop("n_lidar_rays_entities", 15)
         self.n_lidar_rays_agents = kwargs.pop("n_lidar_rays_agents", 12)
 
@@ -322,7 +322,6 @@ class Scenario(BaseScenario):
         """
         # Mothership obs (global agents & tasks)
         obs = {}
-        # if agent.name == "mothership":
         obs["pos"] = agent.state.pos
         obs["vel"] = agent.state.vel
         obs["worker_pos"] = torch.cat(
@@ -334,14 +333,20 @@ class Scenario(BaseScenario):
         obs["target_pos"] = torch.cat([t.state.pos for t in self._targets], dim=1)
 
         # Worker obs (local lidar scans)
-        obs["lidar_1_measures"] = agent.sensors[0].measure()
+        obs["target_lidar"] = agent.sensors[0].measure()
         if self.use_agent_lidar:
             obs["agent_lidar"] = agent.sensors[1].measure()
         if self.use_obstacle_lidar:
             obs["obstacle_lidar"] = agent.sensors[2].measure()
 
-        # for o in obs:
-        #     print(f"!! Observation {o} Shape: {obs[o].shape} \n {obs[o]}")
+
+        # if agent.name != "mothership" and self.world.agents[0].action.u is not None:
+            # print("Mothership action: ", self.world.agents[0].action.u)
+        if self.world.agents[0].action.u is None:
+            obs["mothership_actions"] = torch.zeros((self.world.batch_dim, self.world.agents[0].action_size),
+                                                    device=self.world.device)
+        else:
+            obs["mothership_actions"] = torch.tensor(self.world.agents[0].action.u, device=self.world.device)
 
         return obs
 
@@ -394,6 +399,91 @@ class Scenario(BaseScenario):
                     geoms.append(line)
 
         return geoms
+
+
+class Mothership(Agent):
+
+    def __init__(self,
+                 name,
+                 shape = None,
+                 movable = True,
+                 rotatable = True,
+                 collide = True,
+                 density = 25,
+                 mass = 1,
+                 f_range = None,
+                 max_f = None,
+                 t_range = None,
+                 max_t = None,
+                 v_range = None,
+                 max_speed = None,
+                 color=Color.BLUE,
+                 alpha = 0.5,
+                 obs_range = None,
+                 obs_noise = None,
+                 u_noise = 0,
+                 u_range = 1,
+                 u_multiplier = 1,
+                 action_script = None,
+                 sensors = None,
+                 c_noise = 0,
+                 silent = True,
+                 adversary = False,
+                 drag = None,
+                 linear_friction = None,
+                 angular_friction = None,
+                 gravity = None,
+                 collision_filter = ...,
+                 render_action = False,
+                 dynamics = None,
+                 action_size = None,
+                 discrete_action_nvec = None
+                 ):
+
+        super().__init__(name,
+                         shape,
+                         movable,
+                         rotatable,
+                         collide,
+                         density,
+                         mass,
+                         f_range,
+                         max_f,
+                         t_range,
+                         max_t,
+                         v_range,
+                         max_speed,
+                         color,
+                         alpha,
+                         obs_range,
+                         obs_noise,
+                         u_noise,
+                         u_range,
+                         u_multiplier,
+                         action_script,
+                         sensors,
+                         c_noise,
+                         silent,
+                         adversary,
+                         drag,
+                         linear_friction,
+                         angular_friction,
+                         gravity,
+                         collision_filter,
+                         render_action,
+                         dynamics,
+                         action_size,
+                         discrete_action_nvec
+                         )
+
+class MothershipAction(Action):
+
+    def __init__(self, u_range, u_multiplier, u_noise, action_size):
+        super().__init__(u_range, u_multiplier, u_noise, action_size)
+
+        self.action_size = action_size
+
+
 
 
 

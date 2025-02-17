@@ -6,7 +6,7 @@ from benchmarl.algorithms import MappoConfig
 from benchmarl.experiment import Experiment, ExperimentConfig
 from benchmarl.models.mlp import MlpConfig
 from environments.custom_vmas.common import CustomVmasTask
-
+from models.joint_models import JointModelsConfig
 # !apt-get update
 # !apt-get install -y x11-utils python3-opengl xvfb
 # !pip install pyvirtualdisplay torchvision "av<14"
@@ -105,10 +105,10 @@ if __name__ == "__main__":
     num_envs = 8 # @param {"type":"integer"}
 
     # Load task configuration
-    # task_config_path = "mr_spec_control/conf/task/custom_vmas/discovery_mothership.yaml"
-    task_config_path = "mr_spec_control/conf/task/custom_vmas/example.yaml"
-    # task = CustomVmasTask.DISCOVERY_MOTHERSHIP.get_from_yaml(task_config_path)
-    task = CustomVmasTask.EXAMPLE.get_from_yaml(task_config_path)
+    task_config_path = "mr_spec_control/conf/task/custom_vmas/discovery_mothership.yaml"
+    # task_config_path = "mr_spec_control/conf/task/custom_vmas/example.yaml"
+    task = CustomVmasTask.DISCOVERY_MOTHERSHIP.get_from_yaml(task_config_path)
+    # task = CustomVmasTask.EXAMPLE.get_from_yaml(task_config_path)
     # task.config = {
     #     "max_steps": 100,
     #     "n_agents_holonomic": 4,
@@ -136,7 +136,8 @@ if __name__ == "__main__":
 
     # Load policy model configs
     # Loads from "benchmarl/conf/model/layers/mlp.yaml"
-    model_config = MlpConfig.get_from_yaml()
+    model_config_path = "mr_spec_control/conf/models/joint_models.yaml"
+    model_config = JointModelsConfig.get_from_yaml(model_config_path)
     critic_model_config = MlpConfig.get_from_yaml()
     # model_config = MlpConfig(
     #     num_cells=[256, 256], # Two layers with 256 neurons each

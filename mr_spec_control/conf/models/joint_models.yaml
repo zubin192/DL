@@ -1,7 +1,7 @@
 
-name: passenger_mlp
+name: joint_models
 
-num_cells: [256, 128]
+num_cells: [256, 256]
 layer_class: torch.nn.Linear
 
 activation_class: torch.nn.Tanh
