@@ -2,85 +2,11 @@
 import os
 from pathlib import Path
 
-from benchmarl.algorithms import MappoConfig
+from benchmarl.algorithms import EnsembleAlgorithmConfig, MappoConfig
 from benchmarl.experiment import Experiment, ExperimentConfig
-from benchmarl.models.mlp import MlpConfig
+from benchmarl.models import EnsembleModelConfig, MlpConfig
 from environments.custom_vmas.common import CustomVmasTask
 from models.joint_models import JointModelsConfig
-# !apt-get update
-# !apt-get install -y x11-utils python3-opengl xvfb
-# !pip install pyvirtualdisplay torchvision "av<14"
-# import pyvirtualdisplay
-# display = pyvirtualdisplay.Display(visible=False, size=(1400, 900))
-# display.start()
-
-
-# def use_vmas_env(
-#     render: bool,
-#     num_envs: int,
-#     n_steps: int,
-#     device: str,
-#     scenario: Union[str, BaseScenario],
-#     continuous_actions: bool,
-#     **kwargs
-# ):
-#     """Example function to use a vmas environment.
-
-#     This is a simplification of the function in `vmas.examples.use_vmas_env.py`.
-
-#     Args:
-#         continuous_actions (bool): Whether the agents have continuous or discrete actions
-#         scenario (str, BaseScenario): Name of scenario or scenario class
-#         device (str): Torch device to use
-#         render (bool): Whether to render the scenario
-#         num_envs (int): Number of vectorized environments
-#         n_steps (int): Number of steps before returning done
-
-#     """
-
-#     scenario_name = scenario if isinstance(scenario,str) else scenario.__class__.__name__
-
-#     env = make_env(
-#         scenario=scenario,
-#         num_envs=num_envs,
-#         device=device,
-#         continuous_actions=continuous_actions,
-#         seed=0,
-#         # Environment specific variables
-#         **kwargs
-#     )
-
-#     frame_list = []  # For creating a gif
-#     init_time = time.time()
-#     step = 0
-
-#     for s in range(n_steps):
-#         step += 1
-#         print(f"Step {step}")
-
-#         actions = []
-#         for i, agent in enumerate(env.agents):
-#             action = env.get_random_action(agent)
-
-#             actions.append(action)
-
-#         obs, rews, dones, info = env.step(actions)
-
-#         if render:
-#             frame = env.render(mode="rgb_array")
-#             frame_list.append(frame)
-
-#     total_time = time.time() - init_time
-#     print(
-#         f"It took: {total_time}s for {n_steps} steps of {num_envs} parallel environments on device {device} "
-#         f"for {scenario_name} scenario."
-#     )
-
-#     if render:
-#         from moviepy.editor import ImageSequenceClip
-#         fps=30
-#         clip = ImageSequenceClip(frame_list, fps=fps)
-#         clip.write_gif(f'{scenario_name}.gif', fps=fps)
 
 
 if __name__ == "__main__":
@@ -121,7 +47,11 @@ if __name__ == "__main__":
 
     # Load RL algorithm config
     # Loads from "benchmarl/conf/algorithm/mappo.yaml"
-    algorithm_config = MappoConfig.get_from_yaml()
+    algorithm_config = EnsembleAlgorithmConfig(
+        {"mothership": MappoConfig.get_from_yaml(),
+         "passenger": MappoConfig.get_from_yaml()
+        }
+    )
     # algorithm_config = MappoConfig(
     #     share_param_critic=True, # Critic param sharing on
     #     clip_epsilon=0.2,
@@ -137,7 +67,11 @@ if __name__ == "__main__":
     # Load policy model configs
     # Loads from "benchmarl/conf/model/layers/mlp.yaml"
     model_config_path = "mr_spec_control/conf/models/joint_models.yaml"
-    model_config = JointModelsConfig.get_from_yaml(model_config_path)
+    model_config = EnsembleModelConfig(
+        {"mothership": JointModelsConfig.get_from_yaml(model_config_path),
+         "passenger": JointModelsConfig.get_from_yaml(model_config_path)}
+    )
+
     critic_model_config = MlpConfig.get_from_yaml()
     # model_config = MlpConfig(
     #     num_cells=[256, 256], # Two layers with 256 neurons each
@@ -174,8 +108,8 @@ if __name__ == "__main__":
         config=experiment_config,
     )
 
-    # experiment.algorithm.group_map["mothership"] = ["mothership"]
-    # experiment.algorithm.group_map["passengers"] = ["passenger_0", "passenger_1", "passenger_2", "passenger_3"]
+    # experiment.algorithm.group_map["mothership"] = ["mothership_0"]
+    # experiment.algorithm.group_map["passengers"] = ["passenger_1", "passenger_2", "passenger_3", "passenger_4"]
 
     # exp_json_file = str(Path(experiment.folder_name) / Path(experiment.name + ".json"))
 

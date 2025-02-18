@@ -30,6 +30,7 @@ class CustomVmasTask(Task):
             seed: Optional[int],
             device: DEVICE_TYPING,
         ) -> Callable[[], EnvBase]:
+
             config = copy.deepcopy(self.config)
             if self is CustomVmasTask.DISCOVERY_MOTHERSHIP: # This is the only modification we make ....
                 scenario = discovery_mothership.Scenario()

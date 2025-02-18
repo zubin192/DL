@@ -75,11 +75,11 @@ class Scenario(BaseScenario):
         # mothership.covering_reward = mothership.collision_rew.clone()
         # world.add_agent(mothership)
 
-        # Initialize workers
+        # Initialize passengers
         for i in range(self.n_agents):
             # Mothership
             if i == 0:
-                name = "mothership"
+                name = f"mothership_{i}"
                 movable = False
             else:
                 name = f"passenger_{i}"
@@ -199,7 +199,7 @@ class Scenario(BaseScenario):
         for target in self._targets[self.n_targets :]:
             target.set_pos(self.get_outside_pos(env_index), batch_index=env_index)
 
-        # Spawn workers around mothership
+        # Spawn passengers around mothership
         mothership_pos = self.world.agents[0].state.pos
         for agent in self.world.agents[1:]:
             agent.set_pos(mothership_pos + (torch.rand(1, 2, device=self.world.device)*2 - 1)*0.1, batch_index=env_index)
@@ -235,7 +235,7 @@ class Scenario(BaseScenario):
 
             self.shared_covering_rew[:] = 0
             for a in self.world.agents:
-                self.shared_covering_rew += self.worker_covering_reward(a)
+                self.shared_covering_rew += self.passenger_covering_reward(a)
             self.shared_covering_rew[self.shared_covering_rew != 0] /= 2
 
         covering_rew = (
@@ -245,7 +245,7 @@ class Scenario(BaseScenario):
         )
 
         # Collision avoidance reward
-        # TODO - Did away with this for now
+        # NOTE - Did away with this for now
         agent.collision_rew[:] = 0
         # for a in self.world.agents:
         #     if a != agent:
@@ -298,7 +298,7 @@ class Scenario(BaseScenario):
             device=self.world.device,
         ).uniform_(-1000 * self.world.x_semidim, -10 * self.world.x_semidim)
 
-    def worker_covering_reward(self, agent):
+    def passenger_covering_reward(self, agent):
         """Reward for covering targets"""
         agent_index = self.world.agents.index(agent)
 
@@ -315,38 +315,40 @@ class Scenario(BaseScenario):
         return agent.covering_reward
 
     def observation(self, agent: Agent):
-        """Return sparse global obs for the coordinator and local obs for workers
+        """Return sparse global obs for the coordinator and local obs for passengers
 
         The returned tensor should contain the observations for ``agent`` in all envs and should have
         shape ``(self.world.batch_dim, n_agent_obs)``, or be a dict with leaves following that shape.
         """
-        # Mothership obs (global agents & tasks)
         obs = {}
         obs["pos"] = agent.state.pos
         obs["vel"] = agent.state.vel
-        obs["worker_pos"] = torch.cat(
-                [a.state.pos for a in self.world.agents[1:]], dim=1
-            )
-        obs["worker_vel"] = torch.cat(
-                [a.state.vel for a in self.world.agents[1:]], dim=1
-            )
-        obs["target_pos"] = torch.cat([t.state.pos for t in self._targets], dim=1)
 
-        # Worker obs (local lidar scans)
-        obs["target_lidar"] = agent.sensors[0].measure()
-        if self.use_agent_lidar:
-            obs["agent_lidar"] = agent.sensors[1].measure()
-        if self.use_obstacle_lidar:
-            obs["obstacle_lidar"] = agent.sensors[2].measure()
-
-
-        # if agent.name != "mothership" and self.world.agents[0].action.u is not None:
-            # print("Mothership action: ", self.world.agents[0].action.u)
-        if self.world.agents[0].action.u is None:
-            obs["mothership_actions"] = torch.zeros((self.world.batch_dim, self.world.agents[0].action_size),
-                                                    device=self.world.device)
+        if agent.name == "mothership":
+            # Mothership obs (global agents & tasks)
+            obs["passenger_pos"] = torch.cat(
+                    [a.state.pos for a in self.world.agents[1:]], dim=1
+                )
+            obs["passenger_vel"] = torch.cat(
+                    [a.state.vel for a in self.world.agents[1:]], dim=1
+                )
+            obs["target_pos"] = torch.cat([t.state.pos for t in self._targets], dim=1)
         else:
-            obs["mothership_actions"] = torch.tensor(self.world.agents[0].action.u, device=self.world.device)
+            # passenger obs (local lidar scans + mothership guidance)
+            obs["target_lidar"] = agent.sensors[0].measure()
+            if self.use_agent_lidar:
+                obs["agent_lidar"] = agent.sensors[1].measure()
+            if self.use_obstacle_lidar:
+                obs["obstacle_lidar"] = agent.sensors[2].measure()
+
+            # TODO: Extract passenger-specific actions from mothership.action.u
+            if self.world.agents[0].action.u is None:
+                obs["mothership_actions"] = torch.zeros((self.world.batch_dim,
+                                                         self.world.agents[0].action_size),
+                                                        device=self.world.device)
+            else:
+                obs["mothership_actions"] = torch.tensor(self.world.agents[0].action.u,
+                                                         device=self.world.device)
 
         return obs
 
@@ -399,92 +401,6 @@ class Scenario(BaseScenario):
                     geoms.append(line)
 
         return geoms
-
-
-class Mothership(Agent):
-
-    def __init__(self,
-                 name,
-                 shape = None,
-                 movable = True,
-                 rotatable = True,
-                 collide = True,
-                 density = 25,
-                 mass = 1,
-                 f_range = None,
-                 max_f = None,
-                 t_range = None,
-                 max_t = None,
-                 v_range = None,
-                 max_speed = None,
-                 color=Color.BLUE,
-                 alpha = 0.5,
-                 obs_range = None,
-                 obs_noise = None,
-                 u_noise = 0,
-                 u_range = 1,
-                 u_multiplier = 1,
-                 action_script = None,
-                 sensors = None,
-                 c_noise = 0,
-                 silent = True,
-                 adversary = False,
-                 drag = None,
-                 linear_friction = None,
-                 angular_friction = None,
-                 gravity = None,
-                 collision_filter = ...,
-                 render_action = False,
-                 dynamics = None,
-                 action_size = None,
-                 discrete_action_nvec = None
-                 ):
-
-        super().__init__(name,
-                         shape,
-                         movable,
-                         rotatable,
-                         collide,
-                         density,
-                         mass,
-                         f_range,
-                         max_f,
-                         t_range,
-                         max_t,
-                         v_range,
-                         max_speed,
-                         color,
-                         alpha,
-                         obs_range,
-                         obs_noise,
-                         u_noise,
-                         u_range,
-                         u_multiplier,
-                         action_script,
-                         sensors,
-                         c_noise,
-                         silent,
-                         adversary,
-                         drag,
-                         linear_friction,
-                         angular_friction,
-                         gravity,
-                         collision_filter,
-                         render_action,
-                         dynamics,
-                         action_size,
-                         discrete_action_nvec
-                         )
-
-class MothershipAction(Action):
-
-    def __init__(self, u_range, u_multiplier, u_noise, action_size):
-        super().__init__(u_range, u_multiplier, u_noise, action_size)
-
-        self.action_size = action_size
-
-
-
 
 
 if __name__ == "__main__":
