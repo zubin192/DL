@@ -10,7 +10,6 @@ max_steps: 500
 n_agents: 5 # does not include mothership
 n_targets: 7
 n_obstacles: 7
-lidar_range: 0.25
 covering_range: 0.15
 agents_per_target: 1
 targets_respawn: True
@@ -25,8 +24,8 @@ y_semidim: 1
 # SENSING
 use_agent_lidar: True
 use_obstacle_lidar: True
-n_lidar_rays: True
-
+lidar_range: 0.25
+n_lidar_rays: 64
 
 # REWARDS
 agent_collision_penalty: 0

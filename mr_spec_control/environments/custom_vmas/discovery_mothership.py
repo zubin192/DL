@@ -24,15 +24,15 @@ class Scenario(BaseScenario):
         self.n_obstacles = kwargs.pop("n_obstacles", 5)
         self.x_semidim = kwargs.pop("x_semidim", 1)
         self.y_semidim = kwargs.pop("y_semidim", 1)
-        self.min_dist_between_entities = kwargs.pop("min_dist_between_entities", 0.25)
-        self.lidar_range = kwargs.pop("lidar_range", 0.25)
-        self.covering_range = kwargs.pop("covering_range", 0.15)
+        self._min_dist_between_entities = kwargs.pop("min_dist_between_entities", 0.25)
+        self._lidar_range = kwargs.pop("lidar_range", 0.25)
+        self._covering_range = kwargs.pop("covering_range", 0.15)
 
         self.use_agent_lidar = kwargs.pop("use_agent_lidar", True)
         self.use_obstacle_lidar = kwargs.pop("use_obstacle_lidar", True)
         self.n_lidar_rays = kwargs.pop("n_lidar_rays", 32)
 
-        self.agents_per_target = kwargs.pop("agents_per_target", 1)
+        self._agents_per_target = kwargs.pop("agents_per_target", 1)
         self.targets_respawn = kwargs.pop("targets_respawn", True)
         self.shared_reward = kwargs.pop("shared_reward", False)
 
@@ -40,7 +40,7 @@ class Scenario(BaseScenario):
         self.covering_rew_coeff = kwargs.pop("covering_rew_coeff", 1.0)
         self.time_penalty = kwargs.pop("time_penalty", 0)
 
-        self.comms_range = kwargs.pop("comms_range", 1.5*self.lidar_range)
+        self._comms_range = kwargs.pop("comms_range", 1.5*self._lidar_range)
         self.min_collision_distance = kwargs.pop("min_collision_distance", 0.005)
         self.agent_radius = kwargs.pop("agent_radius", 0.025)
 
@@ -97,7 +97,7 @@ class Scenario(BaseScenario):
                         Lidar(
                             world,
                             n_rays=self.n_lidar_rays,
-                            max_range=self.lidar_range,
+                            max_range=self._lidar_range,
                             entity_filter=entity_filter_targets,
                             render_color=Color.GREEN,
                         )
@@ -109,7 +109,7 @@ class Scenario(BaseScenario):
                                 # angle_start=0.05,
                                 # angle_end=2 * torch.pi + 0.05,
                                 n_rays=self.n_lidar_rays,
-                                max_range=self.lidar_range,
+                                max_range=self._lidar_range,
                                 entity_filter=entity_filter_agents,
                                 render_color=Color.BLUE,
                             )
@@ -124,7 +124,7 @@ class Scenario(BaseScenario):
                                 # angle_start=0.1,
                                 # angle_end=2 * torch.pi + 0.1,
                                 n_rays=self.n_lidar_rays,
-                                max_range=self.lidar_range,
+                                max_range=self._lidar_range,
                                 entity_filter=entity_filter_obstacles,
                                 render_color=Color.RED,
                             )
@@ -191,7 +191,7 @@ class Scenario(BaseScenario):
             entities=placable_entities,
             world=self.world,
             env_index=env_index,
-            min_dist_between_entities=self.min_dist_between_entities,
+            min_dist_between_entities=self._min_dist_between_entities,
             x_bounds=(-self.world.x_semidim, self.world.x_semidim),
             y_bounds=(-self.world.y_semidim, self.world.y_semidim),
         )
@@ -227,10 +227,10 @@ class Scenario(BaseScenario):
             self.targets_pos = torch.stack([t.state.pos for t in self._targets], dim=1)
             self.agents_targets_dists = torch.cdist(self.agents_pos, self.targets_pos)
             self.agents_per_target = torch.sum(
-                (self.agents_targets_dists < self.covering_range).type(torch.int),
+                (self.agents_targets_dists < self._covering_range).type(torch.int),
                 dim=1,
             )
-            self.covered_targets = self.agents_per_target >= self.agents_per_target
+            self.covered_targets = self.agents_per_target >= self._agents_per_target
 
             self.shared_covering_rew[:] = 0
             for a in self.world.agents:
@@ -270,7 +270,7 @@ class Scenario(BaseScenario):
                         occupied_positions,
                         env_index=None,
                         world=self.world,
-                        min_dist_between_entities=self.min_dist_between_entities,
+                        min_dist_between_entities=self._min_dist_between_entities,
                         x_bounds=(-self.world.x_semidim, self.world.x_semidim),
                         y_bounds=(-self.world.y_semidim, self.world.y_semidim),
                     )
@@ -303,7 +303,7 @@ class Scenario(BaseScenario):
 
         agent.covering_reward[:] = 0
         targets_covered_by_agent = (
-            self.agents_targets_dists[:, agent_index] < self.covering_range
+            self.agents_targets_dists[:, agent_index] < self._covering_range
         )
         num_covered_targets_covered_by_agent = (
             targets_covered_by_agent * self.covered_targets
@@ -372,7 +372,7 @@ class Scenario(BaseScenario):
         geoms: List[Geom] = []
         # Target ranges
         for target in self._targets:
-            range_circle = rendering.make_circle(self.covering_range, filled=False)
+            range_circle = rendering.make_circle(self._covering_range, filled=False)
             xform = rendering.Transform()
             xform.set_translation(*target.state.pos[env_index])
             range_circle.add_attr(xform)
@@ -386,7 +386,7 @@ class Scenario(BaseScenario):
                 agent_dist = torch.linalg.vector_norm(
                     agent1.state.pos - agent2.state.pos, dim=-1
                 )
-                if agent_dist[env_index] <= self.comms_range:
+                if agent_dist[env_index] <= self._comms_range:
                     color = Color.RED.value
                     line = rendering.Line(
                         (agent1.state.pos[env_index]),
