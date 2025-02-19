@@ -38,7 +38,7 @@ class CustomVmasTask(Task):
                 scenario = example.Scenario() # .... ends here
             else:
                 scenario = self.name.lower()
-
+            # group_map = MarlGroupMapType.ALL_IN_ONE_GROUP
             return lambda: VmasEnv(
                 scenario=scenario,
                 num_envs=num_envs,

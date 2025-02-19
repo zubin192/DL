@@ -116,7 +116,7 @@ class JointModels(Model):
         # Gather in_key
         input = torch.cat([tensordict.get(in_key) for in_key in self.in_keys], dim=-1)
 
-        print(f"!!! Tensordict input:\n {tensordict} \n In Keys: \n{self.in_keys} \n Policy Input:\n {input, input.shape}")
+        # print(f"!!! Tensordict:\n {tensordict} \n In Keys: \n{self.in_keys} \n Policy Input:\n {input, input.shape}")
 
         # Has multi-agent input dimension
         if self.input_has_agent_dim:

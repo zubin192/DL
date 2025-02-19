@@ -12,22 +12,19 @@ from models.joint_models import JointModelsConfig
 if __name__ == "__main__":
 
     # ==== INFRASTRUCTURE TODOs ====
-    # TODO: Fix observation dimensions
     # TODO: Implement initial passenger MLP model, get sim running
     # TODO: Implement initial mothership MAT model, get sim running
-    # TODO:  Get mothership model output to passenger model input
+    # TODO: Format mothership action output
 
     # ==== METHOD/DESIGN TODOs ====
     # TODO: Figure out mothership reward. Same as passengers'?
     # TODO: Figure out critic model(s) - same critic for all? Mask out to specific passengers?
         # One for mothership, one for passengeres?
 
-    # ==== EXPERIMENT TODOs ====
-    # TODO for Class: Everything should be in place to run mixed-obs experiments
 
     # Hyperparameters
-    train_device = "cpu" # @param {"type":"string"}
-    vmas_device = "cpu" # @param {"type":"string"}
+    train_device = "cuda" # @param {"type":"string"}
+    vmas_device = "cuda" # @param {"type":"string"}
     num_envs = 8 # @param {"type":"integer"}
 
     # Load task configuration
@@ -67,9 +64,11 @@ if __name__ == "__main__":
     # Load policy model configs
     # Loads from "benchmarl/conf/model/layers/mlp.yaml"
     model_config_path = "mr_spec_control/conf/models/joint_models.yaml"
+    # JointModelsConfig.get_from_yaml(model_config_path)
     model_config = EnsembleModelConfig(
-        {"mothership": JointModelsConfig.get_from_yaml(model_config_path),
-         "passenger": JointModelsConfig.get_from_yaml(model_config_path)}
+        {"mothership": MlpConfig.get_from_yaml(),
+         "passenger": MlpConfig.get_from_yaml()
+         }
     )
 
     critic_model_config = MlpConfig.get_from_yaml()
@@ -86,16 +85,16 @@ if __name__ == "__main__":
     experiment_config.sampling_device = vmas_device
     experiment_config.train_device = train_device
 
-    experiment_config.max_n_frames = 10_000_000 # Number of frames before training ends
+    experiment_config.max_n_frames = 60_000_000 # Number of frames before training ends
     experiment_config.gamma = 0.99
-    experiment_config.on_policy_collected_frames_per_batch = 60_000 # Number of frames collected each iteration
+    experiment_config.on_policy_collected_frames_per_batch = 300_000 # Number of frames collected each iteration (max_steps from config * n_envs_per_worker)
     experiment_config.on_policy_n_envs_per_worker = 600 # Number of vmas vectorized enviornemnts (each will collect 100 steps, see max_steps in task_config -> 600 * 100 = 60_000 the number above)
     experiment_config.on_policy_n_minibatch_iters = 45
     experiment_config.on_policy_minibatch_size = 4096
     experiment_config.evaluation = True
     experiment_config.render = True
     experiment_config.share_policy_params = True # Policy parameter sharing on
-    experiment_config.evaluation_interval = 120_000 # Interval in terms of frames, will evaluate every 120_000 / 60_000 = 2 iterations
+    experiment_config.evaluation_interval = 600_000 # Interval in terms of frames, will evaluate every 600_000 / 300_000 = 2 iterations
     experiment_config.evaluation_episodes = 200 # Number of vmas vectorized enviornemnts used in evaluation
     experiment_config.loggers = ["csv"] # Log to csv, usually you should use wandb
 

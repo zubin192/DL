@@ -4,11 +4,33 @@ defaults:
   - vmas_discovery_config_custom
   - _self_
 
-max_steps: 100
-n_agents: 5
+max_steps: 500
+
+# INSTANCE
+n_agents: 5 # does not include mothership
 n_targets: 7
-lidar_range: 0.35
-covering_range: 0.25
+n_obstacles: 7
+lidar_range: 0.25
+covering_range: 0.15
 agents_per_target: 1
 targets_respawn: True
+min_dist_between_entities: 0.25
+comms_range: 0.5
+min_collision_distance: 0.005
+agent_radius: 0.025
+
+x_semidim: 1
+y_semidim: 1
+
+# SENSING
+use_agent_lidar: True
+use_obstacle_lidar: True
+n_lidar_rays: True
+
+
+# REWARDS
+agent_collision_penalty: 0
+covering_rew_coeff: 100.0
+time_penalty: -1.0
 shared_reward: False
+
