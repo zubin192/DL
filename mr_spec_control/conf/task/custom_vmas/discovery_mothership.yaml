@@ -4,9 +4,10 @@ defaults:
   - vmas_discovery_config_custom
   - _self_
 
-max_steps: 500
+max_steps: 200
 
 # INSTANCE
+use_mothership: False
 n_agents: 5 # does not include mothership
 n_targets: 7
 n_obstacles: 7
@@ -24,8 +25,8 @@ y_semidim: 1
 # SENSING
 use_agent_lidar: True
 use_obstacle_lidar: True
-lidar_range: 0.25
-n_lidar_rays: 64
+lidar_range: 0.4
+n_lidar_rays: 128
 
 # REWARDS
 agent_collision_penalty: 0

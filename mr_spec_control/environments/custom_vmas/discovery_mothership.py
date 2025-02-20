@@ -19,7 +19,10 @@ if typing.TYPE_CHECKING:
 
 class Scenario(BaseScenario):
     def make_world(self, batch_dim: int, device: torch.device, **kwargs):
-        self.n_agents = kwargs.pop("n_agents", 5) + 1 # mothership is extra
+        self.use_mothership = kwargs.pop("use_mothership", True)
+        self.n_agents = kwargs.pop("n_agents", 5)
+        if self.use_mothership: # mothership adds extra agent
+            self.n_agents += 1
         self.n_targets = kwargs.pop("n_targets", 7)
         self.n_obstacles = kwargs.pop("n_obstacles", 5)
         self.x_semidim = kwargs.pop("x_semidim", 1)
@@ -77,7 +80,7 @@ class Scenario(BaseScenario):
         # Initialize passengers
         for i in range(self.n_agents):
             # Mothership
-            if i == 0:
+            if i == 0 and self.use_mothership:
                 name = f"mothership_{i}"
                 movable = False
             else:
@@ -89,8 +92,8 @@ class Scenario(BaseScenario):
                 name=name,
                 collide=True,
                 shape=Sphere(radius=self.agent_radius),
-                mass=10,
-                max_speed=2.0,
+                mass=5,
+                max_speed=10.0,
                 movable=movable,
                 sensors=(
                     [
@@ -211,7 +214,10 @@ class Scenario(BaseScenario):
         # if agent.name == "mothership":
         #     return torch.zeros(self.world.batch_dim, device=self.world.device)
 
-        is_first = agent == self.world.agents[1] # 0 is mothership
+        if self.use_mothership:
+            is_first = agent == self.world.agents[1] # 0 is mothership
+        else:
+            is_first = agent == self.world.agents[0]
         is_last = agent == self.world.agents[-1]
 
         # Time reward, Covering reward
@@ -341,12 +347,13 @@ class Scenario(BaseScenario):
                 obs["obstacle_lidar"] = agent.sensors[2].measure()
 
             # TODO: Extract passenger-specific actions from mothership.action.u
-            if self.world.agents[0].action.u is None:
-                obs["mothership_actions"] = torch.zeros((self.world.batch_dim,
-                                                         self.world.agents[0].action_size),
-                                                        device=self.world.device)
-            else:
-                obs["mothership_actions"] = self.world.agents[0].action.u.clone().detach()
+            if self.use_mothership:
+                if self.world.agents[0].action.u is None:
+                    obs["mothership_actions"] = torch.zeros((self.world.batch_dim,
+                                                            self.world.agents[0].action_size),
+                                                            device=self.world.device)
+                else:
+                    obs["mothership_actions"] = self.world.agents[0].action.u
 
         return obs
 
