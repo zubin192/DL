@@ -6,7 +6,7 @@ from sim.coordinator import Coordinator
 from sim.worker import Worker
 from vmas.simulator.core import Landmark, Sphere, World
 from vmas.simulator.scenario import BaseScenario
-from vmas.simulator.utils import Color, ScenarioUtils
+from vmas.simulator.utils import Color
 
 
 class ScenarioTaskComms(BaseScenario):
@@ -79,22 +79,9 @@ class ScenarioTaskComms(BaseScenario):
         """
 
         # Pass any kwargs you desire when creating the environment
-        # Overall
-        self.use_mothership = kwargs.pop("use_mothership", True)
         self.num_agents = kwargs.get("num_agents", 5)
         self.num_tasks = kwargs.get("num_tasks", 5)
         self.random_tasks = kwargs.get("random_tasks", True)
-        self.tasks_respawn = kwargs.pop("tasks_respawn", True)
-        self._comms_range = kwargs.pop("comms_range", 1.5*self._lidar_range)
-        # Reward-specific
-        self.shared_reward = kwargs.pop("shared_reward", False)
-        self.time_penalty = kwargs.pop("time_penalty", -1)
-        # Rendering
-        self.agent_radius = kwargs.pop("agent_radius", 0.025)
-        self.task_radius = kwargs.pop("task_radius", self.agent_radius)
-        self.x_semidim = kwargs.pop("x_semidim", 1)
-        self.y_semidim = kwargs.pop("y_semidim", 1)
-
         modality_funcs = kwargs.get("modality_funcs", [])
         sim_action_func = kwargs.get("sim_action_func", None)
 
@@ -102,29 +89,12 @@ class ScenarioTaskComms(BaseScenario):
         self.task_comp_thresh = 0.05
         self.comms_dec_rate = 8
         self.comms_decay = True
-        self.viewer_zoom = 1
-
-        ScenarioUtils.check_kwargs_consumed(kwargs)
-
-        if self.use_mothership: # mothership adds extra agent
-            self.num_agents += 1
 
         self.batch_dim = batch_dim
         # self.device = device
 
         # Create world
-        # world = World(batch_dim, device, dt=0.1, drag=0.5, dim_c=0)
-        # Make world
-        world = World(
-            batch_dim,
-            device,
-            x_semidim=self.x_semidim,
-            y_semidim=self.y_semidim,
-            collision_force=500,
-            substeps=2,
-            drag=0.25,
-        )
-
+        world = World(batch_dim, device, dt=0.1, drag=0.5, dim_c=0)
         # Add agents
         for i in range(self.num_agents):
             if i == 0:  # Agent 0 is mothership
