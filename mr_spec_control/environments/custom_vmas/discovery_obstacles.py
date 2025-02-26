@@ -3,15 +3,20 @@
 #  All rights reserved.
 
 import typing
-from typing import Callable, Dict, List, Union
+from typing import Callable, Dict, List, Union, Tuple
 
 import torch
 from torch import Tensor
 from vmas import render_interactively
 from vmas.simulator.core import Agent, Action, Box, Entity, Landmark, Sphere, World
 from vmas.simulator.scenario import BaseScenario
-from vmas.simulator.sensors import Lidar
+from vmas.simulator.sensors import Sensor, Lidar
 from vmas.simulator.utils import Color, ScenarioUtils, X, Y
+
+from vmas.simulator import rendering
+
+from environments.custom_vmas.camera import TopDownCamera
+# from camera import TopDownCamera
 
 if typing.TYPE_CHECKING:
     from vmas.simulator.rendering import Geom
@@ -28,11 +33,15 @@ class Scenario(BaseScenario):
         self.x_semidim = kwargs.pop("x_semidim", 1)
         self.y_semidim = kwargs.pop("y_semidim", 1)
         self._min_dist_between_entities = kwargs.pop("min_dist_between_entities", 0.25)
-        self._lidar_range = kwargs.pop("lidar_range", 0.25)
         self._covering_range = kwargs.pop("covering_range", 0.15)
 
-        self.use_agent_lidar = kwargs.pop("use_agent_lidar", True)
-        self.use_obstacle_lidar = kwargs.pop("use_obstacle_lidar", True)
+        self.use_camera = kwargs.pop("use_camera", True)
+        self.use_target_lidar = kwargs.pop("use_target_lidar", False)
+        self.use_agent_lidar = kwargs.pop("use_agent_lidar", False)
+        self.use_obstacle_lidar = kwargs.pop("use_obstacle_lidar", False)
+        self.frame_x_dim = kwargs.pop("frame_x_dim", 2.0)
+        self.frame_y_dim = kwargs.pop("frame_y_dim", 2.0)
+        self._lidar_range = kwargs.pop("lidar_range", 0.25)
         self.n_lidar_rays = kwargs.pop("n_lidar_rays", 32)
 
         self._agents_per_target = kwargs.pop("agents_per_target", 1)
@@ -96,15 +105,30 @@ class Scenario(BaseScenario):
                 max_speed=10.0,
                 movable=movable,
                 sensors=(
-                    [
+                    (
+                        [
+                        TopDownCamera(
+                            world,
+                            frame_x_dim=self.frame_x_dim,
+                            frame_y_dim=self.frame_y_dim,
+                            )
+                        ]
+                        if self.use_camera
+                            else []
+                    )
+                    + (
+                        [
                         Lidar(
                             world,
                             n_rays=self.n_lidar_rays,
                             max_range=self._lidar_range,
                             entity_filter=entity_filter_targets,
                             render_color=Color.GREEN,
-                        )
-                    ]
+                            )
+                        ]
+                        if self.use_target_lidar
+                            else []
+                    )
                     + (
                         [
                             Lidar(
@@ -340,11 +364,14 @@ class Scenario(BaseScenario):
             obs["target_pos"] = torch.cat([t.state.pos for t in self._targets], dim=1)
         else:
             # passenger obs (local lidar scans + mothership guidance)
-            obs["target_lidar"] = agent.sensors[0].measure()
+            if self.use_camera:
+                obs["camera"] = agent.sensors[0].measure()
+            if self.use_target_lidar:
+                obs["target_lidar"] = agent.sensors[1].measure()
             if self.use_agent_lidar:
-                obs["agent_lidar"] = agent.sensors[1].measure()
+                obs["agent_lidar"] = agent.sensors[2].measure()
             if self.use_obstacle_lidar:
-                obs["obstacle_lidar"] = agent.sensors[2].measure()
+                obs["obstacle_lidar"] = agent.sensors[3].measure()
 
             # TODO: Extract passenger-specific actions from mothership.action.u
             if self.use_mothership:
@@ -374,7 +401,6 @@ class Scenario(BaseScenario):
         return self.all_time_covered_targets.all(dim=-1)
 
     def extra_render(self, env_index: int = 0) -> "List[Geom]":
-        from vmas.simulator import rendering
 
         geoms: List[Geom] = []
         # Target ranges

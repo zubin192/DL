@@ -8,7 +8,7 @@ max_steps: 200
 
 # INSTANCE
 use_mothership: False
-n_agents: 5 # does not include mothership
+n_agents: 3 # does not include mothership
 n_targets: 7
 n_obstacles: 7
 covering_range: 0.15
@@ -23,8 +23,13 @@ x_semidim: 1
 y_semidim: 1
 
 # SENSING
-use_agent_lidar: True
-use_obstacle_lidar: True
+use_camera: True
+use_target_lidar: False
+use_agent_lidar: False
+use_obstacle_lidar: False
+
+frame_x_dim: 2.0
+frame_y_dim: 2.0
 lidar_range: 0.4
 n_lidar_rays: 128
 

@@ -13,14 +13,14 @@ from torchrl.envs.libs.vmas import VmasEnv
 from benchmarl.environments.common import Task
 from benchmarl.utils import DEVICE_TYPING
 
-from . import discovery_mothership, example
+from . import discovery_obstacles, example
 
 
 class CustomVmasTask(Task):
     """Enum for VMAS tasks."""
 
     # List enum here
-    DISCOVERY_MOTHERSHIP = None
+    DISCOVERY_OBSTACLES = None
     EXAMPLE = None
 
     def get_env_fun(
@@ -32,8 +32,8 @@ class CustomVmasTask(Task):
         ) -> Callable[[], EnvBase]:
 
             config = copy.deepcopy(self.config)
-            if self is CustomVmasTask.DISCOVERY_MOTHERSHIP: # This is the only modification we make ....
-                scenario = discovery_mothership.Scenario()
+            if self is CustomVmasTask.DISCOVERY_OBSTACLES: # This is the only modification we make ....
+                scenario = discovery_obstacles.Scenario()
             elif self is CustomVmasTask.EXAMPLE:
                 scenario = example.Scenario() # .... ends here
             else:
