@@ -93,17 +93,17 @@ if __name__ == "__main__":
     experiment_config.sampling_device = vmas_device
     experiment_config.train_device = train_device
 
-    experiment_config.max_n_frames = 10_000_000 # Number of frames before training ends
+    experiment_config.max_n_frames = 1_000_000 # Number of frames before training ends
     experiment_config.gamma = 0.99
-    experiment_config.on_policy_collected_frames_per_batch = 20_000 # Number of frames collected each iteration (max_steps from config * n_envs_per_worker)
-    experiment_config.on_policy_n_envs_per_worker = 100 # Number of vmas vectorized enviornemnts (each will collect max_steps steps, see max_steps in task_config -> 200 * max_steps = 50_000 the number above)
+    experiment_config.on_policy_collected_frames_per_batch = 500 # Number of frames collected each iteration (max_steps from config * n_envs_per_worker)
+    experiment_config.on_policy_n_envs_per_worker = 5 # Number of vmas vectorized enviornemnts (each will collect max_steps steps, see max_steps in task_config -> 5 * max_steps = 1_000 the number above)
     experiment_config.on_policy_n_minibatch_iters = 45
     experiment_config.on_policy_minibatch_size = 4096
     experiment_config.evaluation = True
     experiment_config.render = True
     experiment_config.share_policy_params = True # Policy parameter sharing
-    experiment_config.evaluation_interval = 60_000 # Interval in terms of frames, will evaluate every 60_000 / 20_000 = 3 iterations
-    experiment_config.evaluation_episodes = 100 # Number of vmas vectorized enviornemnts used in evaluation
+    experiment_config.evaluation_interval = 1_000 # Interval in terms of frames, will evaluate every 3_000 / 1_000 = 3 iterations
+    experiment_config.evaluation_episodes = 5 # Number of vmas vectorized enviornemnts used in evaluation
     experiment_config.loggers = ["csv"] # Log to csv, usually you should use wandb
 
     experiment = Experiment(

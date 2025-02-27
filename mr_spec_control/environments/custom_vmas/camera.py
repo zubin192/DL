@@ -46,20 +46,47 @@ class TopDownCamera(Sensor):
         self.alpha = alpha
         self.entity_filter = entity_filter
 
-        if not center:
-            center = torch.zeros((world.batch_dim, 2), device=world.device)
+        if self.center is None:
+            self.center = torch.zeros((world.batch_dim, 2), device=world.device)
 
-        self.viewers = [rendering.Viewer(self.resolution[0], self.resolution[1], visible=False) for _ in center]
-        self.views = []
-        for env, viewer in enumerate(self.viewers):
-            viewer.set_bounds(
-                center[env][0] - self.frame_x_dim / 2, center[env][0] + self.frame_x_dim / 2,
-                center[env][1] - self.frame_y_dim / 2, center[env][1] + self.frame_y_dim / 2
+        self.viewer= rendering.Viewer(self.resolution[0], self.resolution[1], visible=False)
+        print("!! Initialized viewer")
+
+        self._last_image = self._produce_image()
+
+    def _produce_image(self):
+        views = []
+        for env in range(self._world.batch_dim):
+            c_x, c_y = self.center[env]
+
+            self.viewer.set_bounds(
+                c_x - self.frame_x_dim / 2, c_x + self.frame_x_dim / 2,
+                c_y - self.frame_y_dim / 2, c_y + self.frame_y_dim / 2
             )
-            self.views.append(viewer.render(return_rgb_array=True))
 
-        self._last_image = torch.from_numpy(np.stack(self.views)).to(self._world.device)
-        # self._last_image = torch.asarray(self.views, device=world.device)
+            # Render filtered entities
+            for entity in self._world._agents + self._world._landmarks:
+                if not self.entity_filter(entity):
+                    continue
+
+                pos = entity.state.pos[env]  # Extract position for current env
+                if c_x - self.frame_x_dim / 2 <= pos[0] <= c_x + self.frame_x_dim / 2 and \
+                   c_y - self.frame_y_dim / 2 <= pos[1] <= c_y + self.frame_y_dim / 2:
+
+                    # Create geometry for rendering
+                    geom = entity.shape.get_geometry()
+                    geom.set_color(*entity.color, alpha=1.0)
+                    xform = rendering.Transform()
+                    xform.set_translation(pos[0], pos[1])
+                    geom.add_attr(xform)
+                    self.viewer.add_onetime(geom)
+
+            # Render and store result
+            image = self.viewer.render(return_rgb_array=True)
+            views.append(image)
+
+        return torch.from_numpy(np.stack(views, axis=0))
+
 
     def to(self, device: torch.device):
         self._last_image = self._last_image.to(device)
@@ -68,44 +95,14 @@ class TopDownCamera(Sensor):
         """Generates a top-down view of the environment as an image."""
 
         if new_center is None:
-            center = self.agent.state.pos
+            self.center = self.agent.state.pos
         else:
-            center = new_center
+            self.center = new_center
 
-        # Create a top-down camera view
-        for env, viewer in enumerate(self.viewers):
-            viewer.set_bounds(
-                center[env][0] - self.frame_x_dim / 2, center[env][0] + self.frame_x_dim / 2,
-                center[env][1] - self.frame_y_dim / 2, center[env][1] + self.frame_y_dim / 2
-            )
+        self._last_image = self._produce_image()
 
-            # Render filtered entities in the scene
-            for entity in self._world._agents + self._world._landmarks:
-                if not self.entity_filter(entity):  # Apply entity filter
-                    continue
+        # self.save_image("test_img.png")
 
-                pos = entity.state.pos
-                if (
-                    center[env][0] - self.frame_x_dim / 2 <= pos[env][0] <= center[env][0] + self.frame_x_dim / 2
-                    and center[env][1] - self.frame_y_dim / 2 <= pos[env][1] <= center[env][1] + self.frame_y_dim / 2
-                ):
-                    # Render if in scene region
-                    geom = entity.shape.get_geometry()
-                    # geom = rendering.make_circle(entity.size if hasattr(entity, "size") else 0.05)
-                    geom.set_color(*entity.color, alpha=1.0)
-                    xform = rendering.Transform()
-                    xform.set_translation(pos[env][0], pos[env][1])
-                    geom.add_attr(xform)
-                    viewer.add_onetime(geom)
-
-            # self.views[i] = viewer.render(return_rgb_array=True)
-
-            # Render the image and return it as an array
-            # TODO probably a more efficient way to do this
-            self._last_image[env] = torch.from_numpy(viewer.render(return_rgb_array=True).copy()).to(self._world.device)
-        # self._last_image = torch.asarray(self.views, device=self._world.device)
-
-        # print(f"!! Last image shape: {self._last_image.shape}")
         return self._last_image
 
     def save_image(self, filename: str):
