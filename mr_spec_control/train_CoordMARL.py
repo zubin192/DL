@@ -12,7 +12,6 @@ from models.joint_models import JointModelsConfig
 if __name__ == "__main__":
 
     # ==== INFRASTRUCTURE TODOs ====
-    # TODO: Implement initial passenger MLP model, get sim running
     # TODO: Implement initial mothership MAT model, get sim running
     # TODO: Format mothership action output
 
@@ -25,20 +24,10 @@ if __name__ == "__main__":
     # Hyperparameters
     train_device = "cuda" # @param {"type":"string"}
     vmas_device = "cuda" # @param {"type":"string"}
-    num_envs = 8 # @param {"type":"integer"}
 
     # Load task configuration
     task_config_path = "mr_spec_control/conf/task/custom_vmas/discovery_mothership.yaml"
     task = CustomVmasTask.DISCOVERY_OBSTACLES.get_from_yaml(task_config_path)
-    # task.config = {
-    #     "max_steps": 100,
-    #     "n_agents_holonomic": 4,
-    #     "n_agents_diff_drive": 0,
-    #     "n_agents_car": 0,
-    #     "lidar_range": 0,
-    #     "comms_rendering_range": comms_radius, # Changed
-    #     "shared_rew": False,
-    # }
 
     # Load RL algorithm config
     # Loads from "benchmarl/conf/algorithm/mappo.yaml"
@@ -62,29 +51,14 @@ if __name__ == "__main__":
 
     # Load policy model configs
     # Loads from "benchmarl/conf/model/layers/mlp.yaml"
-    # model_config_path = "mr_spec_control/conf/models/joint_models.yaml"
-    # JointModelsConfig.get_from_yaml(model_config_path)
-    # model_config = EnsembleModelConfig(
-    #     {"mothership": MlpConfig.get_from_yaml(),
-    #      "passenger": MlpConfig.get_from_yaml()
-    #      }
-    # )
-    model_config = CnnConfig.get_from_yaml()
+    cnn_config_path = "mr_spec_control/conf/models/custom_cnn.yaml"
+    model_config = CnnConfig.get_from_yaml(cnn_config_path)
     # model_config = MlpConfig.get_from_yaml()
-    # model_config = MlpConfig(
-    #     num_cells=[256, 256], # Two layers with 256 neurons each
-    #     layer_class=torch.nn.Linear,
-    #     activation_class=torch.nn.Tanh,
-    # )
 
-    critic_model_config = CnnConfig.get_from_yaml()
+    critic_model_config = CnnConfig.get_from_yaml(cnn_config_path)
     # critic_model_config = MlpConfig.get_from_yaml()
-    # critic_model_config = MlpConfig(
-    #     num_cells=[256, 256], # Two layers with 256 neurons each
-    #     layer_class=torch.nn.Linear,
-    #     activation_class=torch.nn.Tanh,
-    # )
-
+    critic_model_config.centralised = True
+    critic_model_config.has_agent_input_dim = True
 
     # Load experiment configuration
     experiment_config = ExperimentConfig.get_from_yaml()
@@ -95,15 +69,17 @@ if __name__ == "__main__":
 
     experiment_config.max_n_frames = 1_000_000 # Number of frames before training ends
     experiment_config.gamma = 0.99
-    experiment_config.on_policy_collected_frames_per_batch = 500 # Number of frames collected each iteration (max_steps from config * n_envs_per_worker)
-    experiment_config.on_policy_n_envs_per_worker = 5 # Number of vmas vectorized enviornemnts (each will collect max_steps steps, see max_steps in task_config -> 5 * max_steps = 1_000 the number above)
-    experiment_config.on_policy_n_minibatch_iters = 45
-    experiment_config.on_policy_minibatch_size = 4096
+    experiment_config.on_policy_collected_frames_per_batch = 1_000 # Number of frames collected each iteration (max_steps from config * n_envs_per_worker)
+    experiment_config.on_policy_n_envs_per_worker = 10 # Number of vmas vectorized enviornemnts (each will collect max_steps steps, see max_steps in task_config -> 50 * max_steps = 5_000 the number above)
+    experiment_config.on_policy_n_minibatch_iters = 32
+    # experiment_config.on_policy_minibatch_size = 64
+
     experiment_config.evaluation = True
     experiment_config.render = True
     experiment_config.share_policy_params = True # Policy parameter sharing
-    experiment_config.evaluation_interval = 1_000 # Interval in terms of frames, will evaluate every 3_000 / 1_000 = 3 iterations
-    experiment_config.evaluation_episodes = 5 # Number of vmas vectorized enviornemnts used in evaluation
+    experiment_config.evaluation_interval = 5_000 # Interval in terms of frames, will evaluate every frames_per_batch/eval_interval = 5 iterations
+    experiment_config.evaluation_episodes = 10 # Number of vmas vectorized enviornemnts used in evaluation
+
     experiment_config.loggers = ["csv"] # Log to csv, usually you should use wandb
 
     experiment = Experiment(
@@ -122,14 +98,3 @@ if __name__ == "__main__":
 
     # Run experiment
     experiment.run()
-
-    # # Render the environment
-    # use_vmas_env(
-    #     render=True,
-    #     num_envs=num_envs,
-    #     n_steps=100,
-    #     device=vmas_device,
-    #     scenario=MyScenario(),
-    #     continuous_actions=True,
-    #     # Scenario kwargs
-    #     )

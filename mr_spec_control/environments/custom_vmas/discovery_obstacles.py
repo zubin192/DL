@@ -15,8 +15,10 @@ from vmas.simulator.utils import Color, ScenarioUtils, X, Y
 
 from vmas.simulator import rendering
 
-from environments.custom_vmas.camera import TopDownCamera
-# from camera import TopDownCamera
+try:
+    from environments.custom_vmas.camera import TopDownCamera
+except:
+    from camera import TopDownCamera
 
 if typing.TYPE_CHECKING:
     from vmas.simulator.rendering import Geom
@@ -25,7 +27,7 @@ if typing.TYPE_CHECKING:
 class Scenario(BaseScenario):
     def make_world(self, batch_dim: int, device: torch.device, **kwargs):
         self.use_mothership = kwargs.pop("use_mothership", True)
-        self.n_agents = kwargs.pop("n_agents", 5)
+        self.n_agents = kwargs.pop("n_agents", 3)
         if self.use_mothership: # mothership adds extra agent
             self.n_agents += 1
         self.n_targets = kwargs.pop("n_targets", 7)
@@ -48,12 +50,12 @@ class Scenario(BaseScenario):
         self.targets_respawn = kwargs.pop("targets_respawn", True)
         self.shared_reward = kwargs.pop("shared_reward", False)
 
-        self.agent_collision_penalty = kwargs.pop("agent_collision_penalty", 0)
-        self.covering_rew_coeff = kwargs.pop("covering_rew_coeff", 1.0)
+        self.agent_collision_penalty = kwargs.pop("agent_collision_penalty", -1.0)
+        self.covering_rew_coeff = kwargs.pop("covering_rew_coeff", 25.0)
         self.time_penalty = kwargs.pop("time_penalty", 0)
 
         self._comms_range = kwargs.pop("comms_range", 1.5*self._lidar_range)
-        self.min_collision_distance = kwargs.pop("min_collision_distance", 0.005)
+        self.min_collision_distance = kwargs.pop("min_collision_distance", 0.1)
         self.agent_radius = kwargs.pop("agent_radius", 0.025)
 
         self.target_radius = self.agent_radius
@@ -212,7 +214,7 @@ class Scenario(BaseScenario):
         # Place entities
         placable_entities = self._obstacles[: self.n_obstacles] + \
             self._targets[: self.n_targets] + \
-                [self.world.agents[0]] # put mothership randomly
+                self.world.agents[: self.n_agents]
 
         ScenarioUtils.spawn_entities_randomly(
             entities=placable_entities,
@@ -226,18 +228,15 @@ class Scenario(BaseScenario):
             target.set_pos(self.get_outside_pos(env_index), batch_index=env_index)
 
         # Spawn passengers around mothership
-        mothership_pos = self.world.agents[0].state.pos
-        for agent in self.world.agents[1:]:
-            agent.set_pos(mothership_pos + (torch.rand(1, 2, device=self.world.device)*2 - 1)*0.1, batch_index=env_index)
+        # mothership_pos = self.world.agents[0].state.pos
+        # for agent in self.world.agents[1:]:
+        #     agent.set_pos(mothership_pos + (torch.rand(1, 2, device=self.world.device)*2 - 1)*0.1, batch_index=env_index)
 
 
     def reward(self, agent: Agent):
         """Reward completing targets, avoiding collisions with agents, and time penalty"""
 
         # TODO Compute mothership reward
-        # if agent.name == "mothership":
-        #     return torch.zeros(self.world.batch_dim, device=self.world.device)
-
         if self.use_mothership:
             is_first = agent == self.world.agents[1] # 0 is mothership
         else:
@@ -273,15 +272,6 @@ class Scenario(BaseScenario):
             else self.shared_covering_rew
         )
 
-        # Collision avoidance reward
-        # NOTE - Did away with this for now
-        agent.collision_rew[:] = 0
-        # for a in self.world.agents:
-        #     if a != agent:
-        #         agent.collision_rew[
-        #             self.world.get_distance(a, agent) < self.min_collision_distance
-        #         ] += self.agent_collision_penalty
-
         # Respawn targets
         if is_last:
             if self.targets_respawn:
@@ -315,7 +305,20 @@ class Scenario(BaseScenario):
                         None
                     )[self.covered_targets[:, i]]
 
-        return agent.collision_rew + covering_rew + self.time_rew
+        # Collision avoidance reward
+        # NOTE - Did away with this for now
+        agent.collision_rew[:] = 0
+        for o in self._obstacles:
+            agent.collision_rew[self.world.get_distance(o, agent) <
+                                self.min_collision_distance] += self.agent_collision_penalty
+
+        # Distance to nearest task reward (inverse)
+        targets_pos = torch.stack([target.state.pos for target in self._targets])
+        dists_to_targets = torch.linalg.norm(agent.state.pos - targets_pos, dim=2)
+        near_task_rew = 1 / torch.min(dists_to_targets)
+        # print(f"Dists to targets\n {dists_to_targets}, Nearest: {near_task_rew}")
+
+        return agent.collision_rew + covering_rew + self.time_rew + near_task_rew
 
     def get_outside_pos(self, env_index):
         return torch.empty(
@@ -350,17 +353,12 @@ class Scenario(BaseScenario):
         shape ``(self.world.batch_dim, n_agent_obs)``, or be a dict with leaves following that shape.
         """
         obs = {}
-        obs["pos"] = agent.state.pos
-        # obs["vel"] = agent.state.vel
-
+        # NOTE Passengers get ONLY their sensor views
         if "mothership" in agent.name:
             # Mothership obs (global agents & tasks)
             obs["passenger_pos"] = torch.cat(
                     [a.state.pos for a in self.world.agents[1:]], dim=1
                 )
-            # obs["passenger_vel"] = torch.cat(
-            #         [a.state.vel for a in self.world.agents[1:]], dim=1
-                # )
             obs["target_pos"] = torch.cat([t.state.pos for t in self._targets], dim=1)
         else:
             # passenger obs (local lidar scans + mothership guidance)
