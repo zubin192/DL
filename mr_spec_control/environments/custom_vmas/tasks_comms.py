@@ -2,14 +2,15 @@ import math
 
 import numpy as np
 import torch
-from sim.coordinator import Coordinator
-from sim.worker import Worker
-from vmas.simulator.core import Landmark, Sphere, World
+from vmas import render_interactively
+# from sim.coordinator import Coordinator
+# from sim.worker import Worker
+from vmas.simulator.core import Agent, Landmark, Sphere, World
 from vmas.simulator.scenario import BaseScenario
 from vmas.simulator.utils import Color, ScenarioUtils
 
 
-class ScenarioTaskComms(BaseScenario):
+class Scenario(BaseScenario):
     """
     The methods that are **compulsory to instantiate** are:
 
@@ -85,7 +86,7 @@ class ScenarioTaskComms(BaseScenario):
         self.num_tasks = kwargs.get("num_tasks", 5)
         self.random_tasks = kwargs.get("random_tasks", True)
         self.tasks_respawn = kwargs.pop("tasks_respawn", True)
-        self._comms_range = kwargs.pop("comms_range", 1.5*self._lidar_range)
+        self._comms_range = kwargs.pop("comms_range", 1.0)
         # Reward-specific
         self.shared_reward = kwargs.pop("shared_reward", False)
         self.time_penalty = kwargs.pop("time_penalty", -1)
@@ -98,7 +99,7 @@ class ScenarioTaskComms(BaseScenario):
         modality_funcs = kwargs.get("modality_funcs", [])
         sim_action_func = kwargs.get("sim_action_func", None)
 
-        max_vel = 0.2
+        max_vel = 10.0
         self.task_comp_thresh = 0.05
         self.comms_dec_rate = 8
         self.comms_decay = True
@@ -127,39 +128,45 @@ class ScenarioTaskComms(BaseScenario):
 
         # Add agents
         for i in range(self.num_agents):
-            if i == 0:  # Agent 0 is mothership
-                agent = Coordinator(
-                    name=f"coordinator {i}",
-                    collide=True,
-                    mass=100.0,
-                    shape=Sphere(radius=0.04),
-                    max_speed=0.0,
-                    color=Color.BLUE,
-                    u_range=1.0,
-                )
-            else:  # All other agents are homogeneous
-                agent = Worker(
-                    name=f"worker {i}",
-                    collide=True,
-                    mass=1.0,
-                    shape=Sphere(radius=0.02),
-                    max_speed=max_vel,
-                    color=Color.BLUE,
-                    u_range=1.0,
-                    modality_funcs=modality_funcs,
-                    sim_action_func=sim_action_func,
-                )
+            # Mothership
+            if i == 0 and self.use_mothership:
+                name = f"mothership_{i}"
+                movable = False
+            else:
+                name = f"passenger_{i}"
+                movable = True
+
+            agent = Agent(
+                name=name,
+                collide=True,
+                movable=movable,
+                shape=Sphere(radius=self.agent_radius),
+                mass=5.0,
+                max_speed=max_vel,
+                u_range=1.0,
+                color=Color.BLUE,
+                # sim_action_func=sim_action_func,
+            )
+            agent.covering_reward = agent.collision_rew.clone()
             world.add_agent(agent)
+
         # Add tasks
+        self._tasks = []
         for i in range(self.num_tasks):
             task = Landmark(
                 name=f"task {i}",
                 collide=False,
                 movable=False,
-                shape=Sphere(radius=0.04),
+                shape=Sphere(radius=self.task_radius),
                 color=Color.RED,
             )
             world.add_landmark(task)
+            self._tasks.append(task)
+
+        self.covered_tasks = torch.zeros(batch_dim, self.num_tasks, device=device)
+        self.shared_covering_rew = torch.zeros(batch_dim, device=device)
+        self.time_rew = torch.zeros(batch_dim, device=device)
+
 
         self._done = torch.zeros(batch_dim, device=device, dtype=torch.bool)
 
@@ -241,6 +248,38 @@ class ScenarioTaskComms(BaseScenario):
 
         """
 
+        # First-time startup
+        if env_index is None:
+            self.all_time_complete_tasks = torch.full(
+                (self.world.batch_dim, self.num_tasks),
+                False,
+                device=self.world.device,
+            )
+        else:
+            self.all_time_complete_tasks[env_index] = False
+
+        # Place entities
+        placable_entities = self._obstacles[: self.n_obstacles] + \
+            self._targets[: self.num_tasks] + \
+                self.world.agents[: self.n_agents]
+
+        ScenarioUtils.spawn_entities_randomly(
+            entities=placable_entities,
+            world=self.world,
+            env_index=env_index,
+            min_dist_between_entities=self._min_dist_between_entities,
+            x_bounds=(-self.world.x_semidim, self.world.x_semidim),
+            y_bounds=(-self.world.y_semidim, self.world.y_semidim),
+        )
+        for target in self._targets[self.n_targets :]:
+            target.set_pos(self.get_outside_pos(env_index), batch_index=env_index)
+
+        # Spawn passengers around mothership
+        # mothership_pos = self.world.agents[0].state.pos
+        # for agent in self.world.agents[1:]:
+        #     agent.set_pos(mothership_pos + (torch.rand(1, 2, device=self.world.device)*2 - 1)*0.1, batch_index=env_index)
+
+
         for i, agent in enumerate(self.world.agents):
             if "coordinator" in agent.name:
                 agent.set_pos(
@@ -265,38 +304,38 @@ class ScenarioTaskComms(BaseScenario):
                 (self.world.batch_dim,), device=self.world.device
             )
 
-        for i, landmark in enumerate(self.world.landmarks):
-            if self.random_tasks:
-                angle = 2 * math.pi * (i) / self.num_tasks
-                landmark.set_pos(
-                    torch.tensor(
-                        [math.cos(angle), math.sin(angle)],
-                        dtype=torch.float32,
-                        device=self.world.device,
-                    ),
-                    batch_index=env_index,
-                )
-            else:
-                coords = np.random.rand(2)
-                landmark.set_pos(
-                    torch.tensor(
-                        [coords[0], coords[1]],
-                        dtype=torch.float32,
-                        device=self.world.device,
-                    ),
-                    batch_index=env_index,
-                )
+        # for i, landmark in enumerate(self.world.landmarks):
+        #     if self.random_tasks:
+        #         angle = 2 * math.pi * (i) / self.num_tasks
+        #         landmark.set_pos(
+        #             torch.tensor(
+        #                 [math.cos(angle), math.sin(angle)],
+        #                 dtype=torch.float32,
+        #                 device=self.world.device,
+        #             ),
+        #             batch_index=env_index,
+        #         )
+        #     else:
+        #         coords = np.random.rand(2)
+        #         landmark.set_pos(
+        #             torch.tensor(
+        #                 [coords[0], coords[1]],
+        #                 dtype=torch.float32,
+        #                 device=self.world.device,
+        #             ),
+        #             batch_index=env_index,
+        #         )
 
-            if env_index is None:
-                landmark.complete = torch.full(
-                    (self.world.batch_dim,), False, device=self.world.device
-                )
-                landmark.reset_render()
-                self._done[:] = False
-            else:
-                landmark.complete[env_index] = False
-                landmark.is_rendering[env_index] = True
-                self._done[env_index] = False
+        #     if env_index is None:
+        #         landmark.complete = torch.full(
+        #             (self.world.batch_dim,), False, device=self.world.device
+        #         )
+        #         landmark.reset_render()
+        #         self._done[:] = False
+        #     else:
+        #         landmark.complete[env_index] = False
+        #         landmark.is_rendering[env_index] = True
+        #         self._done[env_index] = False
 
     def observation(self, agent):
         """This function computes the observations for ``agent`` in a vectorized way.
@@ -424,3 +463,7 @@ class ScenarioTaskComms(BaseScenario):
         rew = torch.sum(completed_tasks, dim=1, dtype=float).unsqueeze(-1)
 
         return rew
+
+if __name__ == "__main__":
+    scenario = Scenario()
+    render_interactively(scenario)
