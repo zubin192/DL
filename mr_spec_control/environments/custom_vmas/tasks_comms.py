@@ -94,16 +94,17 @@ class Scenario(BaseScenario):
         self.tasks_respawn = kwargs.pop("tasks_respawn", True)
         self._comms_range = kwargs.pop("comms_range", 1.0)
         self.task_comp_range = kwargs.pop("task_comp_range", 0.05)
-        # Reward-specific
-        self.shared_reward = kwargs.pop("shared_reward", False)
-        self.time_penalty = kwargs.pop("time_penalty", -1)
-        self._agents_per_task = kwargs.pop("agents_per_task", 1)
         # Rendering
         self.agent_radius = kwargs.pop("agent_radius", 0.025)
         self.task_radius = kwargs.pop("task_radius", self.agent_radius)
         self._min_dist_between_entities = kwargs.pop("min_dist_between_entities", 0.25)
         self.x_semidim = kwargs.pop("x_semidim", 1)
         self.y_semidim = kwargs.pop("y_semidim", 1)
+        # Reward-specific
+        self.shared_reward = kwargs.pop("shared_reward", False)
+        self.time_penalty = kwargs.pop("time_penalty", -1)
+        self._agents_per_task = kwargs.pop("agents_per_task", 1)
+
 
         modality_funcs = kwargs.get("modality_funcs", [])
         sim_action_func = kwargs.get("sim_action_func", None)
@@ -333,8 +334,9 @@ class Scenario(BaseScenario):
         obs = {}
         obs["pos"] = agent.state.pos
         # obs["vel"] = agent.state.vel
+        obs["task_pos"] = torch.cat([t.state.pos for t in self._tasks], dim=1)
 
-        # NOTE Passengers get ONLY their sensor views
+        # NOTE Passengers get ONLY their sensor views?
         if "mothership" in agent.name:
             # Mothership obs (global agents & tasks)
             obs["passenger_pos"] = torch.cat(

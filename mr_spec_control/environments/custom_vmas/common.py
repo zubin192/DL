@@ -6,14 +6,13 @@
 import copy
 from typing import Callable, Dict, List, Optional
 
+from benchmarl.environments.common import Task
+from benchmarl.utils import DEVICE_TYPING
 from torchrl.data import Composite
 from torchrl.envs import EnvBase
 from torchrl.envs.libs.vmas import VmasEnv
 
-from benchmarl.environments.common import Task
-from benchmarl.utils import DEVICE_TYPING
-
-from . import discovery_obstacles, example
+from . import discovery_obstacles, example, tasks_comms
 
 
 class CustomVmasTask(Task):
@@ -21,6 +20,7 @@ class CustomVmasTask(Task):
 
     # List enum here
     DISCOVERY_OBSTACLES = None
+    TASKS_COMMS = None
     EXAMPLE = None
 
     def get_env_fun(
@@ -34,6 +34,8 @@ class CustomVmasTask(Task):
             config = copy.deepcopy(self.config)
             if self is CustomVmasTask.DISCOVERY_OBSTACLES: # This is the only modification we make ....
                 scenario = discovery_obstacles.Scenario()
+            elif self is CustomVmasTask.TASKS_COMMS:
+                scenario = tasks_comms.Scenario() # .... ends here
             elif self is CustomVmasTask.EXAMPLE:
                 scenario = example.Scenario() # .... ends here
             else:
