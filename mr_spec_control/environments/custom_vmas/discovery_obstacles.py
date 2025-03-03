@@ -27,7 +27,7 @@ if typing.TYPE_CHECKING:
 class Scenario(BaseScenario):
     def make_world(self, batch_dim: int, device: torch.device, **kwargs):
         self.use_mothership = kwargs.pop("use_mothership", True)
-        self.n_agents = kwargs.pop("n_agents", 3)
+        self.n_agents = kwargs.pop("n_agents", 1)
         if self.use_mothership: # mothership adds extra agent
             self.n_agents += 1
         self.n_targets = kwargs.pop("n_targets", 7)
@@ -52,10 +52,11 @@ class Scenario(BaseScenario):
 
         self.agent_collision_penalty = kwargs.pop("agent_collision_penalty", -1.0)
         self.covering_rew_coeff = kwargs.pop("covering_rew_coeff", 25.0)
-        self.time_penalty = kwargs.pop("time_penalty", 0)
+        self.approach_rew_coeff = kwargs.pop("approach_rew_coeff", 1.0)
+        self.time_penalty = kwargs.pop("time_penalty", 0.0)
 
         self._comms_range = kwargs.pop("comms_range", 1.5*self._lidar_range)
-        self.min_collision_distance = kwargs.pop("min_collision_distance", 0.1)
+        self.min_collision_distance = kwargs.pop("min_collision_distance", 0.05)
         self.agent_radius = kwargs.pop("agent_radius", 0.025)
 
         self.target_radius = self.agent_radius
@@ -104,7 +105,8 @@ class Scenario(BaseScenario):
                 collide=True,
                 shape=Sphere(radius=self.agent_radius),
                 mass=5,
-                max_speed=10.0,
+                max_speed=5.0,
+                u_multiplier=1.0,
                 movable=movable,
                 sensors=(
                     (
@@ -164,6 +166,7 @@ class Scenario(BaseScenario):
                 ),
             )
             agent.collision_rew = torch.zeros(batch_dim, device=device)
+            agent.near_task_rew =  agent.collision_rew.clone()
             agent.covering_reward = agent.collision_rew.clone()
             world.add_agent(agent)
 
@@ -313,12 +316,16 @@ class Scenario(BaseScenario):
                                 self.min_collision_distance] += self.agent_collision_penalty
 
         # Distance to nearest task reward (inverse)
-        targets_pos = torch.stack([target.state.pos for target in self._targets])
-        dists_to_targets = torch.linalg.norm(agent.state.pos - targets_pos, dim=2)
-        near_task_rew = 1 / torch.min(dists_to_targets)
-        # print(f"Dists to targets\n {dists_to_targets}, Nearest: {near_task_rew}")
+        agent.near_task_rew[:] = 0
+        for t in self._targets:
+            dists = self.world.get_distance(t, agent)
+            agent.near_task_rew[dists <
+                                (0.5*self.frame_x_dim)] += self.approach_rew_coeff
+        # targets_pos = torch.stack([target.state.pos for target in self._targets])
+        # dists_to_targets = torch.linalg.norm(agent.state.pos - targets_pos, dim=2)
+        # near_task_rew = (1 / torch.min(dists_to_targets) ) #* self.approach_rew_coeff
 
-        return agent.collision_rew + covering_rew + self.time_rew + near_task_rew
+        return agent.collision_rew + covering_rew + self.time_rew + agent.near_task_rew
 
     def get_outside_pos(self, env_index):
         return torch.empty(
@@ -363,7 +370,7 @@ class Scenario(BaseScenario):
         else:
             # passenger obs (local lidar scans + mothership guidance)
             if self.use_camera:
-                obs["camera"] = agent.sensors[0].measure()
+                obs["camera"] = agent.sensors[0].measure() / 255
             if self.use_target_lidar:
                 obs["target_lidar"] = agent.sensors[1].measure()
             if self.use_agent_lidar:
