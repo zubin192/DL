@@ -3,17 +3,17 @@
 #  All rights reserved.
 
 import typing
-from typing import Callable, Dict, List, Union, Tuple
+from typing import Callable, Dict, List, Tuple, Union
 
 import torch
 from torch import Tensor
 from vmas import render_interactively
-from vmas.simulator.core import Agent, Action, Box, Entity, Landmark, Sphere, World
-from vmas.simulator.scenario import BaseScenario
-from vmas.simulator.sensors import Sensor, Lidar
-from vmas.simulator.utils import Color, ScenarioUtils, X, Y
-
 from vmas.simulator import rendering
+from vmas.simulator.core import (Action, Agent, Box, Entity, Landmark, Sphere,
+                                 World)
+from vmas.simulator.scenario import BaseScenario
+from vmas.simulator.sensors import Lidar, Sensor
+from vmas.simulator.utils import Color, ScenarioUtils, X, Y
 
 try:
     from environments.custom_vmas.camera import TopDownCamera
