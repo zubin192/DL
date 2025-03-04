@@ -1,7 +1,7 @@
 
 name: joint_models
 
-num_cells: [256, 256]
+num_cells: [64, 16]
 layer_class: torch.nn.Linear
 
 activation_class: torch.nn.Tanh

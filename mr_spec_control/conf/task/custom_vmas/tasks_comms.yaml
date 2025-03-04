@@ -6,10 +6,8 @@ defaults:
 max_steps: 100
 
 # INSTANCE
-use_mothership: False
 num_agents: 1 # does not include mothership
-num_tasks: 5
-random_tasks: True
+num_tasks: 1
 tasks_respawn: True
 task_comp_range: 0.1
 comms_range: 0.5
@@ -20,6 +18,8 @@ x_semidim: 1
 y_semidim: 1
 
 # REWARDS
-shared_reward: False
+shared_reward: True
+dense_reward: True
+task_reward: 25
 time_penalty: -1
 agents_per_task: 1

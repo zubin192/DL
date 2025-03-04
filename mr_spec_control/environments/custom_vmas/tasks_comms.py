@@ -87,13 +87,12 @@ class Scenario(BaseScenario):
 
         # Pass any kwargs you desire when creating the environment
         # Overall
-        self.use_mothership = kwargs.pop("use_mothership", False)
         self.num_agents = kwargs.get("num_agents", 5)
         self.num_tasks = kwargs.get("num_tasks", 5)
-        self.random_tasks = kwargs.get("random_tasks", True)
         self.tasks_respawn = kwargs.pop("tasks_respawn", True)
-        self._comms_range = kwargs.pop("comms_range", 1.0)
-        self.task_comp_range = kwargs.pop("task_comp_range", 0.05)
+        self._comms_range = kwargs.pop("comms_range", 0.5)
+        self._comms_dec_rate = kwargs.pop("_comms_dec_rate", 8)
+        self.task_comp_range = kwargs.pop("task_comp_range", 0.1)
         # Rendering
         self.agent_radius = kwargs.pop("agent_radius", 0.025)
         self.task_radius = kwargs.pop("task_radius", self.agent_radius)
@@ -102,23 +101,20 @@ class Scenario(BaseScenario):
         self.y_semidim = kwargs.pop("y_semidim", 1)
         # Reward-specific
         self.shared_reward = kwargs.pop("shared_reward", False)
+        self.dense_reward = kwargs.pop("dense_reward", False)
+        self.complete_task_coeff = kwargs.pop("task_reward", 100)
         self.time_penalty = kwargs.pop("time_penalty", -1)
         self._agents_per_task = kwargs.pop("agents_per_task", 1)
-
 
         modality_funcs = kwargs.get("modality_funcs", [])
         sim_action_func = kwargs.get("sim_action_func", None)
 
+        self.num_agents += 1 # mothership adds extra agent
         max_vel = 10.0
-        self.comms_dec_rate = 8
         self.comms_decay = True
         self.viewer_zoom = 1
-        self.complete_task_coeff = 1.0
 
         ScenarioUtils.check_kwargs_consumed(kwargs)
-
-        if self.use_mothership: # mothership adds extra agent
-            self.num_agents += 1
 
         self.batch_dim = batch_dim
         # self.device = device
@@ -139,7 +135,7 @@ class Scenario(BaseScenario):
         # Add agents
         for i in range(self.num_agents):
             # Mothership
-            if i == 0 and self.use_mothership:
+            if i == 0:
                 name = f"mothership_{i}"
                 movable = False
             else:
@@ -157,7 +153,9 @@ class Scenario(BaseScenario):
                 color=Color.BLUE,
                 # sim_action_func=sim_action_func,
             )
+            agent.comms_noise = torch.zeros(batch_dim, device=device)
             agent.completion_reward = torch.zeros(batch_dim, device=device)
+            agent.approach_task_rew = torch.zeros(batch_dim, device=device)
             world.add_agent(agent)
 
         # Add tasks
@@ -269,12 +267,8 @@ class Scenario(BaseScenario):
             self.all_time_complete_tasks[env_index] = False
 
         # Place entities
-        if self.use_mothership:
-            placable_entities = self._tasks[: self.num_tasks] + \
-                    [self.world.agents[0]]
-        else:
-            placable_entities = self._tasks[: self.num_tasks] + \
-                    self.world.agents[: self.num_agents]
+        placable_entities = self._tasks[: self.num_tasks] + \
+                [self.world.agents[0]]
 
         ScenarioUtils.spawn_entities_randomly(
             entities=placable_entities,
@@ -288,10 +282,9 @@ class Scenario(BaseScenario):
             task.set_pos(self.get_outside_pos(env_index), batch_index=env_index)
 
         # Spawn passengers around mothership
-        if self.use_mothership:
-            mothership_pos = self.world.agents[0].state.pos
-            for agent in self.world.agents[1:]:
-                agent.set_pos(mothership_pos + (torch.rand(1, 2, device=self.world.device)*2 - 1)*0.1, batch_index=env_index)
+        mothership_pos = self.world.agents[0].state.pos
+        for agent in self.world.agents[1:]:
+            agent.set_pos(mothership_pos + (torch.rand(1, 2, device=self.world.device)*2 - 1)*0.1, batch_index=env_index)
 
     def observation(self, agent):
         """This function computes the observations for ``agent`` in a vectorized way.
@@ -332,9 +325,38 @@ class Scenario(BaseScenario):
 
         """
         obs = {}
-        obs["pos"] = agent.state.pos
+        # obs["pos"] = agent.state.pos
         # obs["vel"] = agent.state.vel
-        obs["task_pos"] = torch.cat([t.state.pos for t in self._tasks], dim=1)
+
+        # Evaluate pos localization with noise
+        if "passenger" in agent.name and self.comms_decay:
+            cum_noises = []
+            for a_other in self.world.agents:
+                if a_other.name != agent.name:
+                    noise_to_other = torch.exp(
+                        self._comms_dec_rate
+                        * torch.norm(a_other.state.pos - agent.state.pos, dim=1)
+                        - self._comms_dec_rate
+                    )
+                    cum_noises.append(a_other.comms_noise + noise_to_other)
+
+            stacked_comms = torch.stack(cum_noises, dim=0)
+
+            # Find the minimum noise values
+            best_comms = torch.min(stacked_comms, dim=0).values
+            # NOTE: Treat actual pos as mean, noise as SE. Sample from distro.
+            agent.comms_noise = best_comms
+
+            # Apply noise to pos
+            obs["pos"] = torch.normal(
+                agent.state.pos,
+                agent.comms_noise.unsqueeze(-1).expand(self.batch_dim, 2),
+            )
+        else:
+            obs["pos"] = agent.state.pos
+
+        obs["agents_rel_pos"] = torch.cat([a.state.pos-agent.state.pos for a in self.world.agents], dim=1)
+        obs["tasks_rel_pos"] = torch.cat([t.state.pos-agent.state.pos for t in self._tasks], dim=1)
 
         # NOTE Passengers get ONLY their sensor views?
         if "mothership" in agent.name:
@@ -343,17 +365,17 @@ class Scenario(BaseScenario):
                     [a.state.pos for a in self.world.agents[1:]], dim=1
                 )
             obs["task_pos"] = torch.cat([t.state.pos for t in self._tasks], dim=1)
-        else:
+        # else:
             # Passenger obs
 
             # TODO: Extract passenger-specific actions from mothership.action.u
-            if self.use_mothership:
-                if self.world.agents[0].action.u is None:
-                    obs["mothership_actions"] = torch.zeros((self.world.batch_dim,
-                                                            self.world.agents[0].action_size),
-                                                            device=self.world.device)
-                else:
-                    obs["mothership_actions"] = self.world.agents[0].action.u
+            # if self.use_mothership:
+            #     if self.world.agents[0].action.u is None:
+            #         obs["mothership_actions"] = torch.zeros((self.world.batch_dim,
+            #                                                 self.world.agents[0].action_size),
+            #                                                 device=self.world.device)
+            #     else:
+            #         obs["mothership_actions"] = self.world.agents[0].action.u
 
         return obs
 
@@ -384,28 +406,20 @@ class Scenario(BaseScenario):
             ...         return rew
         """
 
-        # Reward every agent with sum of completed tasks
-        # completed_tasks = []
-        # for landmark in self.world.landmarks:
-        #     completed_tasks.append(landmark.complete)
-
-        # completed_tasks = torch.stack(completed_tasks, dim=1)
-        # rew = torch.sum(completed_tasks, dim=1, dtype=float).unsqueeze(-1)
-
-    # TODO Compute mothership reward
-        if self.use_mothership:
-            is_first = agent == self.world.agents[1] # 0 is mothership
-        else:
-            is_first = agent == self.world.agents[0]
+        is_first = agent == self.world.agents[1] # 0 is mothership
         is_last = agent == self.world.agents[-1]
 
+        # At first agent, compute rewards for all agents based on env state
         # Time reward, Covering reward
         if is_first:
+            # Create time rew
             self.time_rew = torch.full(
                 (self.world.batch_dim,),
                 self.time_penalty,
                 device=self.world.device,
             )
+
+            # Check completed tasks based on passenger locations
             self.agents_pos = torch.stack(
                 [a.state.pos for a in self.world.agents], dim=1
             )
@@ -417,18 +431,13 @@ class Scenario(BaseScenario):
             )
             self.complete_tasks = self.agents_per_task >= self._agents_per_task
 
+            # Allocate completion credit to passengers
             self.shared_completion_rew[:] = 0
             for a in self.world.agents:
-                self.shared_completion_rew += self.passenger_completion_reward(a)
+                self.shared_completion_rew += self.passenger_difference_reward(a)
             self.shared_completion_rew[self.shared_completion_rew != 0] /= 2
 
-        tasks_rew = (
-            agent.completion_reward
-            if not self.shared_reward
-            else self.shared_completion_rew
-        )
-
-        # Respawn tasks
+        # At last agents, respawn tasks (if task respawn is true)
         if is_last:
             if self.tasks_respawn:
                 occupied_positions_agents = [self.agents_pos]
@@ -461,17 +470,41 @@ class Scenario(BaseScenario):
                         None
                     )[self.complete_tasks[:, i]]
 
+        tasks_rew = (
+            agent.completion_reward
+            if not self.shared_reward
+            else self.shared_completion_rew
+        )
 
         # Distance to nearest task reward (inverse)
-        tasks_pos = torch.stack([task.state.pos for task in self._tasks])
-        dists_to_tasks = torch.linalg.norm(agent.state.pos - tasks_pos, dim=2)
-        near_task_rew = 1 / torch.min(dists_to_tasks)
-        # print(f"Dists to tasks\n {dists_to_tasks}, Nearest: {near_task_rew}")
+        agent.approach_task_rew[:] = 0
+        if self.dense_reward:
+            tasks_pos = torch.stack([task.state.pos for task in self._tasks])
+            dists_to_tasks = torch.linalg.norm(agent.state.pos - tasks_pos, dim=2)
+            agent.approach_task_rew += (1 / torch.min(dists_to_tasks))
 
-        return tasks_rew #+ self.time_rew + near_task_rew
+        # print("Approach task rew:", agent.approach_task_rew)
+
+        return tasks_rew + agent.approach_task_rew + self.time_rew
 
     def passenger_completion_reward(self, agent):
         """Reward for covering targets"""
+        agent_index = self.world.agents.index(agent)
+
+        agent.completion_reward[:] = 0
+        targets_covered_by_agent = (
+            self.agents_tasks_dists[:, agent_index] < self.task_comp_range
+        )
+        num_covered_targets_covered_by_agent = (
+            targets_covered_by_agent * self.complete_tasks
+        ).sum(dim=-1)
+        agent.completion_reward += (
+            num_covered_targets_covered_by_agent * self.complete_task_coeff
+        )
+        return agent.completion_reward
+
+    def passenger_difference_reward(self, agent):
+        """Difference reward with 0 counterfactual"""
         agent_index = self.world.agents.index(agent)
 
         agent.completion_reward[:] = 0
