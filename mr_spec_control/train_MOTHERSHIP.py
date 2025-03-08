@@ -58,18 +58,18 @@ if __name__ == "__main__":
     experiment_config.sampling_device = vmas_device
     experiment_config.train_device = train_device
 
-    experiment_config.max_n_frames = 1_000_000 # Number of frames before training ends
-    experiment_config.gamma = 0.99
-    experiment_config.on_policy_collected_frames_per_batch = 3_000 # Number of frames collected each iteration (max_steps from config * n_envs_per_worker)
-    experiment_config.on_policy_n_envs_per_worker = 30 # Number of vmas vectorized enviornemnts (each will collect max_steps steps, see max_steps in task_config -> 50 * max_steps = 5_000 the number above)
-    experiment_config.on_policy_n_minibatch_iters = 32
-    # experiment_config.on_policy_minibatch_size = 64
+    # experiment_config.max_n_frames = 1_000_000 # Number of frames before training ends
+    # experiment_config.gamma = 0.99
+    # experiment_config.on_policy_collected_frames_per_batch = 3_000 # Number of frames collected each iteration (max_steps from config * n_envs_per_worker)
+    # experiment_config.on_policy_n_envs_per_worker = 30 # Number of vmas vectorized enviornemnts (each will collect max_steps steps, see max_steps in task_config -> 50 * max_steps = 5_000 the number above)
+    # experiment_config.on_policy_n_minibatch_iters = 32
+    # # experiment_config.on_policy_minibatch_size = 64
 
-    experiment_config.evaluation = True
-    experiment_config.render = True
-    experiment_config.share_policy_params = False # Policy parameter sharing
-    experiment_config.evaluation_interval = 6_000 # Interval in terms of frames, will evaluate every eval_interval/frames_per_batch iterations
-    experiment_config.evaluation_episodes = 30 # Number of vmas vectorized enviornemnts used in evaluation
+    # experiment_config.evaluation = True
+    # experiment_config.render = True
+    # experiment_config.share_policy_params = False # Policy parameter sharing
+    # experiment_config.evaluation_interval = 6_000 # Interval in terms of frames, will evaluate every eval_interval/frames_per_batch iterations
+    # experiment_config.evaluation_episodes = 30 # Number of vmas vectorized enviornemnts used in evaluation
 
     experiment_config.loggers = ["csv"] # Log to csv, usually you should use wandb
 

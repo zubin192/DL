@@ -26,11 +26,11 @@ if typing.TYPE_CHECKING:
 
 class Scenario(BaseScenario):
     def make_world(self, batch_dim: int, device: torch.device, **kwargs):
-        self.use_mothership = kwargs.pop("use_mothership", True)
+        self.use_mothership = kwargs.pop("use_mothership", False)
         self.n_agents = kwargs.pop("n_agents", 1)
         if self.use_mothership: # mothership adds extra agent
             self.n_agents += 1
-        self.n_targets = kwargs.pop("n_targets", 7)
+        self.n_targets = kwargs.pop("n_targets", 2)
         self.n_obstacles = kwargs.pop("n_obstacles", 5)
         self.x_semidim = kwargs.pop("x_semidim", 1)
         self.y_semidim = kwargs.pop("y_semidim", 1)
@@ -41,27 +41,28 @@ class Scenario(BaseScenario):
         self.use_target_lidar = kwargs.pop("use_target_lidar", False)
         self.use_agent_lidar = kwargs.pop("use_agent_lidar", False)
         self.use_obstacle_lidar = kwargs.pop("use_obstacle_lidar", False)
-        self.frame_x_dim = kwargs.pop("frame_x_dim", 2.0)
-        self.frame_y_dim = kwargs.pop("frame_y_dim", 2.0)
+        self.frame_x_dim = kwargs.pop("frame_x_dim", 5.0)
+        self.frame_y_dim = kwargs.pop("frame_y_dim", 5.0)
         self._lidar_range = kwargs.pop("lidar_range", 0.25)
         self.n_lidar_rays = kwargs.pop("n_lidar_rays", 32)
 
         self._agents_per_target = kwargs.pop("agents_per_target", 1)
-        self.targets_respawn = kwargs.pop("targets_respawn", True)
+        self.targets_respawn = kwargs.pop("targets_respawn", False)
         self.shared_reward = kwargs.pop("shared_reward", False)
 
-        self.agent_collision_penalty = kwargs.pop("agent_collision_penalty", -1.0)
+        self.agent_collision_penalty = kwargs.pop("agent_collision_penalty", -0.1)
         self.covering_rew_coeff = kwargs.pop("covering_rew_coeff", 25.0)
-        self.approach_rew_coeff = kwargs.pop("approach_rew_coeff", 1.0)
+        self.approach_rew_coeff = kwargs.pop("approach_rew_coeff", 100.0)
         self.time_penalty = kwargs.pop("time_penalty", 0.0)
 
         self._comms_range = kwargs.pop("comms_range", 1.5*self._lidar_range)
         self.min_collision_distance = kwargs.pop("min_collision_distance", 0.05)
         self.agent_radius = kwargs.pop("agent_radius", 0.025)
 
-        self.target_radius = self.agent_radius
+        self.target_radius = 2*self.agent_radius
         self.viewer_zoom = 1
         self.target_color = Color.GREEN
+        self.step = 0
 
         ScenarioUtils.check_kwargs_consumed(kwargs)
 
@@ -166,8 +167,9 @@ class Scenario(BaseScenario):
                 ),
             )
             agent.collision_rew = torch.zeros(batch_dim, device=device)
-            agent.near_task_rew =  agent.collision_rew.clone()
-            agent.covering_reward = agent.collision_rew.clone()
+            agent.covering_reward = torch.zeros(batch_dim, device=device)
+            agent.task_dist = torch.zeros(batch_dim, device=device)
+            agent.pos_rew = torch.zeros(batch_dim, device=device)
             world.add_agent(agent)
 
         self._targets = []
@@ -204,6 +206,7 @@ class Scenario(BaseScenario):
 
     def reset_world_at(self, env_index: int = None):
         """Reset world at the given environment index"""
+        self.step = 0
         # First-time startup
         if env_index is None:
             self.all_time_covered_targets = torch.full(
@@ -229,6 +232,29 @@ class Scenario(BaseScenario):
         )
         for target in self._targets[self.n_targets :]:
             target.set_pos(self.get_outside_pos(env_index), batch_index=env_index)
+
+        for agent in self.world.agents:
+            agent.set_pos(
+                    torch.tensor(
+                        [0.0, 0.0],
+                        dtype=torch.float32,
+                        device=self.world.device,
+                    ),
+                    batch_index=env_index,
+                )
+
+            dists_to_tasks = torch.stack([
+            torch.linalg.vector_norm(agent.state.pos - t.state.pos) for t in self._targets
+            ], dim=-1)
+            nearest_task_dist = (torch.min(dists_to_tasks))
+            agent.task_dist = nearest_task_dist
+
+
+            # if env_index is not None:
+            #     agent.collision_rew[env_index] = 0
+            #     agent.covering_reward[env_index] = 0
+            #     agent.task_dist[env_index] = 0
+            #     agent.pos_rew[env_index] = 0
 
         # Spawn passengers around mothership
         # mothership_pos = self.world.agents[0].state.pos
@@ -309,23 +335,30 @@ class Scenario(BaseScenario):
                     )[self.covered_targets[:, i]]
 
         # Collision avoidance reward
-        # NOTE - Did away with this for now
         agent.collision_rew[:] = 0
         for o in self._obstacles:
             agent.collision_rew[self.world.get_distance(o, agent) <
                                 self.min_collision_distance] += self.agent_collision_penalty
 
-        # Distance to nearest task reward (inverse)
-        agent.near_task_rew[:] = 0
-        for t in self._targets:
-            dists = self.world.get_distance(t, agent)
-            agent.near_task_rew[dists <
-                                (0.5*self.frame_x_dim)] += self.approach_rew_coeff
-        # targets_pos = torch.stack([target.state.pos for target in self._targets])
-        # dists_to_targets = torch.linalg.norm(agent.state.pos - targets_pos, dim=2)
-        # near_task_rew = (1 / torch.min(dists_to_targets) ) #* self.approach_rew_coeff
+        # Distance to nearest task reward
+        agent.pos_rew[:] = 0
+        dists_to_tasks = torch.stack([
+            torch.linalg.norm(agent.state.pos - t.state.pos, dim=1) for t in self._targets
+        ], dim=-1)
+        nearest_task_dist = (torch.min(dists_to_tasks, dim=1).values)
+        # print(f"\n\n!! Dists to tasks: {dists_to_tasks}, \n !! Nearest task dist: {nearest_task_dist}")
+        # agent.pos_rew[(agent.task_dist - nearest_task_dist) > 0] += self.approach_rew_coeff
+        # agent.pos_rew[(agent.task_dist - nearest_task_dist) <= 0] -= self.approach_rew_coeff
+        # TODO math here is approximated
+        # agent.pos_rew[nearest_task_dist > (self.frame_x_dim/4)] = 0 # Don't penalize unseen tasks\
+        agent.pos_rew[covering_rew == 0] += (agent.task_dist - nearest_task_dist) * self.approach_rew_coeff
+        agent.task_dist = nearest_task_dist
 
-        return agent.collision_rew + covering_rew + self.time_rew + agent.near_task_rew
+        # pos_rew[covering_rew > 0] = 0 # No approaching task reward if at task
+        self.step += 1
+        # print(f"\n!!{self.step} Rewards: \n\tCollision: {agent.collision_rew}\n\tCovering: {covering_rew}\n\tTime: {self.time_rew}\n\tPos: {agent.pos_rew}")
+
+        return agent.collision_rew + covering_rew + self.time_rew + agent.pos_rew
 
     def get_outside_pos(self, env_index):
         return torch.empty(
@@ -403,7 +436,8 @@ class Scenario(BaseScenario):
         return info
 
     def done(self):
-        return self.all_time_covered_targets.all(dim=-1)
+        done = self.all_time_covered_targets.all(dim=-1)
+        return done
 
     def extra_render(self, env_index: int = 0) -> "List[Geom]":
 

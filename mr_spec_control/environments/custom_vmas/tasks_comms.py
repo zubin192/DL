@@ -87,11 +87,11 @@ class Scenario(BaseScenario):
 
         # Pass any kwargs you desire when creating the environment
         # Overall
-        self.num_agents = kwargs.get("num_agents", 5)
+        self.num_agents = kwargs.get("num_agents", 2)
         self.num_tasks = kwargs.get("num_tasks", 5)
         self.tasks_respawn = kwargs.pop("tasks_respawn", True)
-        self._comms_range = kwargs.pop("comms_range", 0.5)
-        self._comms_dec_rate = kwargs.pop("_comms_dec_rate", 8)
+        self.comms_range = kwargs.pop("comms_range", 10.0)
+        self._comms_dec_rate = kwargs.pop("_comms_dec_rate", 10)
         self.task_comp_range = kwargs.pop("task_comp_range", 0.1)
         # Rendering
         self.agent_radius = kwargs.pop("agent_radius", 0.025)
@@ -101,9 +101,9 @@ class Scenario(BaseScenario):
         self.y_semidim = kwargs.pop("y_semidim", 1)
         # Reward-specific
         self.shared_reward = kwargs.pop("shared_reward", False)
-        self.dense_reward = kwargs.pop("dense_reward", False)
+        self.dense_reward_coeff = kwargs.pop("dense_reward_coeff", 10.0)
         self.complete_task_coeff = kwargs.pop("task_reward", 100)
-        self.time_penalty = kwargs.pop("time_penalty", -1)
+        self.time_penalty = kwargs.pop("time_penalty", 0)
         self._agents_per_task = kwargs.pop("agents_per_task", 1)
 
         modality_funcs = kwargs.get("modality_funcs", [])
@@ -155,6 +155,7 @@ class Scenario(BaseScenario):
             )
             agent.comms_noise = torch.zeros(batch_dim, device=device)
             agent.completion_reward = torch.zeros(batch_dim, device=device)
+            agent.task_dist = torch.zeros(batch_dim, device=device)
             agent.approach_task_rew = torch.zeros(batch_dim, device=device)
             world.add_agent(agent)
 
@@ -336,7 +337,7 @@ class Scenario(BaseScenario):
                     noise_to_other = torch.exp(
                         self._comms_dec_rate
                         * torch.norm(a_other.state.pos - agent.state.pos, dim=1)
-                        - self._comms_dec_rate
+                        - (self.comms_range*self._comms_dec_rate)
                     )
                     cum_noises.append(a_other.comms_noise + noise_to_other)
 
@@ -477,15 +478,14 @@ class Scenario(BaseScenario):
         )
 
         # Distance to nearest task reward (inverse)
-        agent.approach_task_rew[:] = 0
-        if self.dense_reward:
-            tasks_pos = torch.stack([task.state.pos for task in self._tasks])
-            dists_to_tasks = torch.linalg.norm(agent.state.pos - tasks_pos, dim=2)
-            agent.approach_task_rew += (1 / torch.min(dists_to_tasks))
+        dists_to_tasks = torch.stack([
+            torch.linalg.vector_norm(agent.state.pos - t.state.pos) for t in self._tasks
+        ], dim=-1)
+        nearest_task_dist = (torch.min(dists_to_tasks))
+        agent.pos_rew = (agent.task_dist - nearest_task_dist) * self.dense_reward_coeff
+        agent.task_dist = nearest_task_dist
 
-        # print("Approach task rew:", agent.approach_task_rew)
-
-        return tasks_rew + agent.approach_task_rew + self.time_rew
+        return tasks_rew + agent.pos_rew + self.time_rew
 
     def passenger_completion_reward(self, agent):
         """Reward for covering targets"""
@@ -552,7 +552,13 @@ class Scenario(BaseScenario):
                 agent_dist = torch.linalg.vector_norm(
                     agent1.state.pos - agent2.state.pos, dim=-1
                 )
-                if agent_dist[env_index] <= self._comms_range:
+                noise_to_other = torch.exp(
+                        self._comms_dec_rate
+                        * torch.norm(agent2.state.pos - agent1.state.pos, dim=1)
+                        - self._comms_dec_rate
+                    )
+                if noise_to_other[env_index] < 1.0:
+                # if agent_dist[env_index] <= self._comms_range:
                     color = Color.RED.value
                     line = rendering.Line(
                         (agent1.state.pos[env_index]),

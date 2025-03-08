@@ -120,7 +120,6 @@ class TopDownCamera(Sensor):
         if self._last_image is None:
             return []
 
-        region = rendering.make_circle(self.frame_x_dim/2)
         region = Box(self.frame_x_dim/2, self.frame_y_dim/2).get_geometry()
         region.set_color(*self.render_color.value, self.alpha)
         pos_region = self.agent.state.pos[env_index]

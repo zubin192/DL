@@ -9,15 +9,15 @@ max_steps: 100
 # INSTANCE
 use_mothership: False
 n_agents: 1 # does not include mothership
-n_targets: 10
-n_obstacles: 10
+n_targets: 1
+n_obstacles: 0
 covering_range: 0.15
 agents_per_target: 1
-targets_respawn: True
+targets_respawn: False
 min_dist_between_entities: 0.25
 comms_range: 0.5
 min_collision_distance: 0.05
-agent_radius: 0.025
+agent_radius: 0.035
 
 x_semidim: 1
 y_semidim: 1
@@ -28,15 +28,15 @@ use_target_lidar: False
 use_agent_lidar: False
 use_obstacle_lidar: False
 
-frame_x_dim: 2.0
-frame_y_dim: 2.0
+frame_x_dim: 5.0
+frame_y_dim: 5.0
 lidar_range: 0.4
 n_lidar_rays: 128
 
 # REWARDS
-agent_collision_penalty: -1.0
-covering_rew_coeff: 25.0
-approach_rew_coeff: 0.0
+agent_collision_penalty: -0.1 #-0.1
+covering_rew_coeff: 25.0 #25.0
+approach_rew_coeff: 100.0
 time_penalty: 0.0
 shared_reward: False
 

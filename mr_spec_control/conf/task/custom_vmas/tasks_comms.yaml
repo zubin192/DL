@@ -3,23 +3,24 @@ defaults:
   - vmas_task_comms_custom
   - _self_
 
-max_steps: 100
+max_steps: 200
 
 # INSTANCE
 num_agents: 1 # does not include mothership
 num_tasks: 1
 tasks_respawn: True
-task_comp_range: 0.1
-comms_range: 0.5
-agent_radius: 0.025
-task_radius: 0.025
+task_comp_range: 0.15
+comms_range: 10
+_comms_dec_rate: 8 #8
+agent_radius: 0.05
+task_radius: 0.05
 min_dist_between_entities: 0.25
 x_semidim: 1
 y_semidim: 1
 
 # REWARDS
 shared_reward: True
-dense_reward: True
-task_reward: 25
-time_penalty: -1
+dense_reward_coeff: 1
+task_reward: 10
+time_penalty: 0
 agents_per_task: 1
