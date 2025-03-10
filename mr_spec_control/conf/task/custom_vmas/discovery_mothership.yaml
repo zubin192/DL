@@ -4,7 +4,7 @@ defaults:
   - vmas_discovery_config_custom
   - _self_
 
-max_steps: 50
+max_steps: 100
 
 # INSTANCE
 use_mothership: False
@@ -23,8 +23,8 @@ x_semidim: 1
 y_semidim: 1
 
 # SENSING
-use_gnn: False
-use_camera: True
+use_gnn: True
+use_camera: False
 use_target_lidar: False
 use_agent_lidar: False
 use_obstacle_lidar: False

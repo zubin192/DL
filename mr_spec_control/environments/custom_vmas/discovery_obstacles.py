@@ -37,8 +37,8 @@ class Scenario(BaseScenario):
         self._min_dist_between_entities = kwargs.pop("min_dist_between_entities", 0.25)
         self._covering_range = kwargs.pop("covering_range", 0.15)
 
-        self.use_gnn = kwargs.pop("use_gnn", False)
-        self.use_camera = kwargs.pop("use_camera", True)
+        self.use_gnn = kwargs.pop("use_gnn", True)
+        self.use_camera = kwargs.pop("use_camera", False)
         self.use_target_lidar = kwargs.pop("use_target_lidar", False)
         self.use_agent_lidar = kwargs.pop("use_agent_lidar", False)
         self.use_obstacle_lidar = kwargs.pop("use_obstacle_lidar", False)
@@ -108,7 +108,7 @@ class Scenario(BaseScenario):
                 shape=Sphere(radius=self.agent_radius),
                 mass=5,
                 max_speed=5.0,
-                u_multiplier=2.5, #4.0,
+                u_multiplier=2.0, #4.0,
                 movable=movable,
                 sensors=(
                     (
@@ -392,7 +392,31 @@ class Scenario(BaseScenario):
         shape ``(self.world.batch_dim, n_agent_obs)``, or be a dict with leaves following that shape.
         """
         if self.use_gnn:
-            return self.get_gnn_observation()
+            agent_poses = []
+            target_poses = []
+            obstacle_poses = []
+
+            for a in self.world.agents:
+                agent_poses.append(agent.state.pos - a.state.pos)
+
+            for t in self._targets:
+                target_poses.append(agent.state.pos - t.state.pos)
+
+            for o in self._obstacles:
+                obstacle_poses.append(agent.state.pos - o.state.pos)
+
+            return torch.cat(
+                            [
+                                agent.state.pos,
+                                agent.state.vel,
+                            ]
+                            + agent_poses
+                            + target_poses
+                            + obstacle_poses,
+
+                            dim=-1,
+                        )
+
 
         obs = {}
         # NOTE Passengers get ONLY their sensor views
@@ -425,14 +449,14 @@ class Scenario(BaseScenario):
         return obs
 
     def get_gnn_observation(self):
-        """Generate GNN-friendly observations for BenchMARL with full topology."""
+        """Generate GNN observations with full topology."""
 
         # Node feature matrix: Include position and other agent-specific features
         node_features = []
 
         # Agent nodes
         for agent in self.world.agents:
-            node_features.append(torch.cat((agent.state.pos, agent.state.vel)))
+            node_features.append(agent.state.pos)
 
         # Obstacle nodes (only position is needed)
         for obs in self._obstacles:
@@ -442,7 +466,7 @@ class Scenario(BaseScenario):
         for target in self._targets:
             node_features.append(target.state.pos)
 
-        node_features = torch.stack(node_features, device=self.world.device)
+        node_features = torch.stack(node_features).to(self.world.device)
 
         # Edge index: Fully connected graph
         edge_index = []
@@ -458,7 +482,7 @@ class Scenario(BaseScenario):
         # Convert to tensors for PyTorch Geometric
         # node_features = torch.tensor(node_features, device=self.world.device)
         edge_index = torch.tensor(edge_index, device=self.world.device).T  # Shape (2, num_edges)
-        edge_features = torch.stack(edge_features, device=self.world.device)  # Shape: (num_edges, 1)
+        edge_features = torch.stack(edge_features).to(self.world.device)  # Shape: (num_edges, 1)
 
         return node_features, edge_index, edge_features
 
