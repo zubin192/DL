@@ -4,16 +4,16 @@ defaults:
   - vmas_discovery_config_custom
   - _self_
 
-max_steps: 100
+max_steps: 50
 
 # INSTANCE
 use_mothership: False
-n_agents: 1 # does not include mothership
-n_targets: 1
-n_obstacles: 0
+targets_respawn: True
+n_agents: 3 # does not include mothership
+n_targets: 10
+n_obstacles: 10
 covering_range: 0.15
 agents_per_target: 1
-targets_respawn: False
 min_dist_between_entities: 0.25
 comms_range: 0.5
 min_collision_distance: 0.05
@@ -23,13 +23,14 @@ x_semidim: 1
 y_semidim: 1
 
 # SENSING
+use_gnn: False
 use_camera: True
 use_target_lidar: False
 use_agent_lidar: False
 use_obstacle_lidar: False
 
-frame_x_dim: 5.0
-frame_y_dim: 5.0
+frame_x_dim: 3.0
+frame_y_dim: 3.0
 lidar_range: 0.4
 n_lidar_rays: 128
 

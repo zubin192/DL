@@ -29,7 +29,7 @@ if __name__ == "__main__":
     #      "passenger": MappoConfig.get_from_yaml()
     #     }
     # )
-    algorithm_config = IddpgConfig.get_from_yaml()
+    algorithm_config = MappoConfig.get_from_yaml()
     # algorithm_config = MappoConfig(
     #     share_param_critic=True, # Critic param sharing on
     #     clip_epsilon=0.2,
@@ -62,18 +62,20 @@ if __name__ == "__main__":
     experiment_config.sampling_device = vmas_device
     experiment_config.train_device = train_device
 
-    # experiment_config.max_n_frames = 1_000_000 # Number of frames before training ends
-    # experiment_config.gamma = 0.99
-    # experiment_config.on_policy_collected_frames_per_batch = 1_000 # Number of frames collected each iteration (max_steps from config * n_envs_per_worker)
-    # experiment_config.on_policy_n_envs_per_worker = 10 # Number of vmas vectorized enviornemnts (each will collect max_steps steps, see max_steps in task_config -> 50 * max_steps = 5_000 the number above)
+    experiment_config.max_n_frames = 1_000_000 # Number of frames before training ends
+    # TODO could try with this back at 1_000_000 to see if epsilon is an issue
+    experiment_config.gamma = 0.99
+    experiment_config.on_policy_collected_frames_per_batch = 1_000 # Number of frames collected each iteration (max_steps from config * n_envs_per_worker)
+    experiment_config.on_policy_n_envs_per_worker = 20 # Number of vmas vectorized enviornemnts (each will collect up to max_steps steps, see max_steps in task_config -> 50 * max_steps = 5_000 the number above)
     # experiment_config.on_policy_n_minibatch_iters = 32
     # experiment_config.on_policy_minibatch_size = 64
 
     experiment_config.evaluation = True
     experiment_config.render = True
-    experiment_config.share_policy_params = False # Policy parameter sharing
-    # experiment_config.evaluation_interval = 12_000 # Interval in terms of frames, will evaluate every frames_per_batch/eval_interval = 5 iterations
-    # experiment_config.evaluation_episodes = 10 # Number of vmas vectorized enviornemnts used in evaluation
+    experiment_config.share_policy_params = True # Policy parameter sharing
+    experiment_config.evaluation_interval = 5*experiment_config.on_policy_collected_frames_per_batch
+    # experiment_config.evaluation_interval = 12_000 # Interval in terms of frames, will evaluate every eval_interval/frames_per_batch = 5 iterations
+    experiment_config.evaluation_episodes = 10 # Number of vmas vectorized enviornemnts used in evaluation
 
     experiment_config.loggers = ["wandb"] # Log to csv, usually you should use wandb
 

@@ -30,13 +30,14 @@ class Scenario(BaseScenario):
         self.n_agents = kwargs.pop("n_agents", 1)
         if self.use_mothership: # mothership adds extra agent
             self.n_agents += 1
-        self.n_targets = kwargs.pop("n_targets", 2)
-        self.n_obstacles = kwargs.pop("n_obstacles", 5)
+        self.n_targets = kwargs.pop("n_targets", 1)
+        self.n_obstacles = kwargs.pop("n_obstacles", 0)
         self.x_semidim = kwargs.pop("x_semidim", 1)
         self.y_semidim = kwargs.pop("y_semidim", 1)
         self._min_dist_between_entities = kwargs.pop("min_dist_between_entities", 0.25)
         self._covering_range = kwargs.pop("covering_range", 0.15)
 
+        self.use_gnn = kwargs.pop("use_gnn", False)
         self.use_camera = kwargs.pop("use_camera", True)
         self.use_target_lidar = kwargs.pop("use_target_lidar", False)
         self.use_agent_lidar = kwargs.pop("use_agent_lidar", False)
@@ -107,7 +108,7 @@ class Scenario(BaseScenario):
                 shape=Sphere(radius=self.agent_radius),
                 mass=5,
                 max_speed=5.0,
-                u_multiplier=1.0,
+                u_multiplier=2.5, #4.0,
                 movable=movable,
                 sensors=(
                     (
@@ -234,19 +235,19 @@ class Scenario(BaseScenario):
             target.set_pos(self.get_outside_pos(env_index), batch_index=env_index)
 
         for agent in self.world.agents:
-            agent.set_pos(
-                    torch.tensor(
-                        [0.0, 0.0],
-                        dtype=torch.float32,
-                        device=self.world.device,
-                    ),
-                    batch_index=env_index,
-                )
+            # agent.set_pos(
+            #         torch.tensor(
+            #             [0.0, 0.0],
+            #             dtype=torch.float32,
+            #             device=self.world.device,
+            #         ),
+            #         batch_index=env_index,
+            #     )
 
             dists_to_tasks = torch.stack([
-            torch.linalg.vector_norm(agent.state.pos - t.state.pos) for t in self._targets
+            torch.linalg.norm(agent.state.pos - t.state.pos, dim=1) for t in self._targets
             ], dim=-1)
-            nearest_task_dist = (torch.min(dists_to_tasks))
+            nearest_task_dist = (torch.min(dists_to_tasks, dim=1).values)
             agent.task_dist = nearest_task_dist
 
 
@@ -347,11 +348,9 @@ class Scenario(BaseScenario):
         ], dim=-1)
         nearest_task_dist = (torch.min(dists_to_tasks, dim=1).values)
         # print(f"\n\n!! Dists to tasks: {dists_to_tasks}, \n !! Nearest task dist: {nearest_task_dist}")
-        # agent.pos_rew[(agent.task_dist - nearest_task_dist) > 0] += self.approach_rew_coeff
-        # agent.pos_rew[(agent.task_dist - nearest_task_dist) <= 0] -= self.approach_rew_coeff
-        # TODO math here is approximated
-        # agent.pos_rew[nearest_task_dist > (self.frame_x_dim/4)] = 0 # Don't penalize unseen tasks\
-        agent.pos_rew[covering_rew == 0] += (agent.task_dist - nearest_task_dist) * self.approach_rew_coeff
+
+        agent.pos_rew[:] = (agent.task_dist - nearest_task_dist) * self.approach_rew_coeff
+        agent.pos_rew[covering_rew > 0] = 0
         agent.task_dist = nearest_task_dist
 
         # pos_rew[covering_rew > 0] = 0 # No approaching task reward if at task
@@ -392,6 +391,9 @@ class Scenario(BaseScenario):
         The returned tensor should contain the observations for ``agent`` in all envs and should have
         shape ``(self.world.batch_dim, n_agent_obs)``, or be a dict with leaves following that shape.
         """
+        if self.use_gnn:
+            return self.get_gnn_observation()
+
         obs = {}
         # NOTE Passengers get ONLY their sensor views
         if "mothership" in agent.name:
@@ -421,6 +423,44 @@ class Scenario(BaseScenario):
                     obs["mothership_actions"] = self.world.agents[0].action.u
 
         return obs
+
+    def get_gnn_observation(self):
+        """Generate GNN-friendly observations for BenchMARL with full topology."""
+
+        # Node feature matrix: Include position and other agent-specific features
+        node_features = []
+
+        # Agent nodes
+        for agent in self.world.agents:
+            node_features.append(torch.cat((agent.state.pos, agent.state.vel)))
+
+        # Obstacle nodes (only position is needed)
+        for obs in self._obstacles:
+            node_features.append(obs.state.pos)
+
+        # Target nodes (only position is needed)
+        for target in self._targets:
+            node_features.append(target.state.pos)
+
+        node_features = torch.stack(node_features, device=self.world.device)
+
+        # Edge index: Fully connected graph
+        edge_index = []
+        edge_features = []
+        for i in range(self.n_agents + self.n_obstacles + self.n_targets):
+            for j in range(self.n_agents + self.n_obstacles + self.n_targets):
+                if i != j:  # No self-loops
+                    edge_index.append([i, j])
+
+                    distance = torch.norm(node_features[i, :2] - node_features[j, :2], p=2).unsqueeze(0)
+                    edge_features.append(distance)
+
+        # Convert to tensors for PyTorch Geometric
+        # node_features = torch.tensor(node_features, device=self.world.device)
+        edge_index = torch.tensor(edge_index, device=self.world.device).T  # Shape (2, num_edges)
+        edge_features = torch.stack(edge_features, device=self.world.device)  # Shape: (num_edges, 1)
+
+        return node_features, edge_index, edge_features
 
 
     def info(self, agent: Agent) -> Dict[str, Tensor]:
