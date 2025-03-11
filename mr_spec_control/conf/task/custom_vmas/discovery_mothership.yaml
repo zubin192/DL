@@ -10,7 +10,7 @@ max_steps: 100
 use_mothership: False
 targets_respawn: True
 n_agents: 3 # does not include mothership
-n_targets: 10
+n_targets: 5
 n_obstacles: 10
 covering_range: 0.15
 agents_per_target: 1

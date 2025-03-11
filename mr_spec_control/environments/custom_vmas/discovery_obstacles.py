@@ -386,36 +386,59 @@ class Scenario(BaseScenario):
         return agent.covering_reward
 
     def observation(self, agent: Agent):
-        """Return sparse global obs for the coordinator and local obs for passengers
-
+        """
         The returned tensor should contain the observations for ``agent`` in all envs and should have
         shape ``(self.world.batch_dim, n_agent_obs)``, or be a dict with leaves following that shape.
         """
         if self.use_gnn:
-            agent_poses = []
-            target_poses = []
-            obstacle_poses = []
+            # agent_poses = []
+            # target_poses = []
+            # obstacle_poses = []
 
-            for a in self.world.agents:
-                agent_poses.append(agent.state.pos - a.state.pos)
+            # for a in self.world.agents:
+            #         agent_poses.append(agent.state.pos - a.state.pos)
 
-            for t in self._targets:
-                target_poses.append(agent.state.pos - t.state.pos)
+            # for t in self._targets:
+            #     target_poses.append(agent.state.pos - t.state.pos)
 
-            for o in self._obstacles:
-                obstacle_poses.append(agent.state.pos - o.state.pos)
+            # for o in self._obstacles:
+            #     obstacle_poses.append(agent.state.pos - o.state.pos)
 
-            return torch.cat(
-                            [
-                                agent.state.pos,
-                                agent.state.vel,
-                            ]
-                            + agent_poses
-                            + target_poses
-                            + obstacle_poses,
+            # return torch.cat(
+            #                 [
+            #                     agent.state.pos,
+            #                     agent.state.vel,
+            #                 ]
+            #                 + agent_poses
+            #                 + target_poses
+            #                 + obstacle_poses,
 
-                            dim=-1,
-                        )
+            #                 dim=-1,
+            #             )
+
+            # Store absolute agent position
+            agent_position = agent.state.pos  # Shape: (2,)
+
+            # Collect absolute positions of all tasks (targets) and obstacles
+            task_positions = torch.stack(
+                [t.state.pos for t in self._targets]
+            )  # Shape: (num_tasks, 2)
+
+            obstacle_positions = torch.stack(
+                [o.state.pos for o in self._obstacles]
+            )  # Shape: (num_obstacles, 2)
+
+            # Stack everything to form a single `position_key` tensor
+            all_positions = torch.cat([
+                agent_position.unsqueeze(0),  #  Shape: (1, 2) for this agent
+                task_positions,
+                obstacle_positions
+            ], dim=0)  # Shape: (num_agents + num_tasks + num_obstacles, 2)
+
+            return {
+                "position_key": all_positions,  # Used to build the dynamic graph
+                "other_features": torch.empty((0,)),  # Modify if other features are needed
+            }
 
 
         obs = {}
@@ -448,7 +471,7 @@ class Scenario(BaseScenario):
 
         return obs
 
-    def get_gnn_observation(self):
+    def get_gnn_observation_full(self, agent: Agent):
         """Generate GNN observations with full topology."""
 
         # Node feature matrix: Include position and other agent-specific features
@@ -459,8 +482,8 @@ class Scenario(BaseScenario):
             node_features.append(agent.state.pos)
 
         # Obstacle nodes (only position is needed)
-        for obs in self._obstacles:
-            node_features.append(obs.state.pos)
+        for obst in self._obstacles:
+            node_features.append(obst.state.pos)
 
         # Target nodes (only position is needed)
         for target in self._targets:
@@ -485,6 +508,14 @@ class Scenario(BaseScenario):
         edge_features = torch.stack(edge_features).to(self.world.device)  # Shape: (num_edges, 1)
 
         return node_features, edge_index, edge_features
+
+    def get_gnn_obs_fromPos(self, agent: Agent):
+        obs = {}
+
+        obs["position_key"] = agent.state.pos
+        obs["edge_index"]
+
+        return obs
 
 
     def info(self, agent: Agent) -> Dict[str, Tensor]:
