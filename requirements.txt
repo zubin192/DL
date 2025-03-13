@@ -2,6 +2,10 @@
 benchmarl
 vmas
 wandb
-torch
 numpy
-torch_geometric
+torch
+torch_geometric # for GNN
+# torch-cluster -f https://data.pyg.org/whl/torch-2.1.0+${CUDA}.html # for GNN
+PyYAML
+
+
