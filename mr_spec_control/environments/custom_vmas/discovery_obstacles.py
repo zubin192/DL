@@ -18,6 +18,7 @@ from vmas.simulator.utils import Color, ScenarioUtils, X, Y
 try:
     from environments.custom_vmas.camera import TopDownCamera
 except:
+    print("Checking local folder for camera")
     from camera import TopDownCamera
 
 if typing.TYPE_CHECKING:
@@ -31,7 +32,7 @@ class Scenario(BaseScenario):
         if self.use_mothership: # mothership adds extra agent
             self.n_agents += 1
         self.n_targets = kwargs.pop("n_targets", 1)
-        self.n_obstacles = kwargs.pop("n_obstacles", 0)
+        self.n_obstacles = kwargs.pop("n_obstacles", 1)
         self.x_semidim = kwargs.pop("x_semidim", 1)
         self.y_semidim = kwargs.pop("y_semidim", 1)
         self._min_dist_between_entities = kwargs.pop("min_dist_between_entities", 0.25)
@@ -391,54 +392,65 @@ class Scenario(BaseScenario):
         shape ``(self.world.batch_dim, n_agent_obs)``, or be a dict with leaves following that shape.
         """
         if self.use_gnn:
-            # agent_poses = []
-            # target_poses = []
-            # obstacle_poses = []
+            agent_poses = []
+            target_poses = []
+            obstacle_poses = []
 
-            # for a in self.world.agents:
-            #         agent_poses.append(agent.state.pos - a.state.pos)
+            radius = 1.0
 
-            # for t in self._targets:
-            #     target_poses.append(agent.state.pos - t.state.pos)
+            for a in self.world.agents:
+                relative_pos = agent.state.pos - a.state.pos
+                a_dists = torch.linalg.norm(relative_pos, dim=1)
+                relative_pos[a_dists > radius] = 0
+                agent_poses.append(relative_pos)
 
-            # for o in self._obstacles:
-            #     obstacle_poses.append(agent.state.pos - o.state.pos)
+            for t in self._targets:
+                relative_pos = agent.state.pos - t.state.pos
+                t_dists = torch.linalg.norm(relative_pos, dim=1)
+                relative_pos[t_dists > radius] = 0
+                target_poses.append(relative_pos)
 
-            # return torch.cat(
-            #                 [
-            #                     agent.state.pos,
-            #                     agent.state.vel,
-            #                 ]
-            #                 + agent_poses
-            #                 + target_poses
-            #                 + obstacle_poses,
+            for o in self._obstacles:
+                relative_pos = agent.state.pos - o.state.pos
+                o_dists = torch.linalg.norm(relative_pos, dim=1)
+                relative_pos[o_dists > radius] = 0
+                obstacle_poses.append(relative_pos)
 
-            #                 dim=-1,
-            #             )
 
-            # Store absolute agent position
-            agent_position = agent.state.pos  # Shape: (2,)
+            obs = torch.cat(
+                            [
+                                agent.state.pos,
+                                agent.state.vel,
+                            ]
+                            + agent_poses
+                            + target_poses
+                            + obstacle_poses,
+                            dim=-1,
+                        )
 
-            # Collect absolute positions of all tasks (targets) and obstacles
-            task_positions = torch.stack(
-                [t.state.pos for t in self._targets]
-            )  # Shape: (num_tasks, 2)
+            # print("Agent info:", [agent.state.pos, agent.state.vel])
+            # print("Agent poses", agent_poses)
+            # print("Target poses:", target_poses)
+            # print("Obstacle poses:", obstacle_poses)
 
-            obstacle_positions = torch.stack(
-                [o.state.pos for o in self._obstacles]
-            )  # Shape: (num_obstacles, 2)
+            # print("OBS: ", obs)
 
-            # Stack everything to form a single `position_key` tensor
-            all_positions = torch.cat([
-                agent_position.unsqueeze(0),  #  Shape: (1, 2) for this agent
-                task_positions,
-                obstacle_positions
-            ], dim=0)  # Shape: (num_agents + num_tasks + num_obstacles, 2)
+            return obs
 
-            return {
-                "position_key": all_positions,  # Used to build the dynamic graph
-                "other_features": torch.empty((0,)),  # Modify if other features are needed
-            }
+            # Agent position
+            # agent_position = agent.state.pos
+
+            # # Tasks positions
+            # task0_position = self._targets[0].state.pos
+
+            # obs = {
+            #     "position_key": agent_position,  # Used to build the dynamic graph
+            #     "task0_pos": task0_position,  # Modify if other features are needed
+            # }
+
+            # # print("OBS: ", obs)
+
+            # return obs
 
 
         obs = {}
@@ -471,51 +483,51 @@ class Scenario(BaseScenario):
 
         return obs
 
-    def get_gnn_observation_full(self, agent: Agent):
-        """Generate GNN observations with full topology."""
+    # def get_gnn_observation_full(self, agent: Agent):
+    #     """Generate GNN observations with full topology."""
 
-        # Node feature matrix: Include position and other agent-specific features
-        node_features = []
+    #     # Node feature matrix: Include position and other agent-specific features
+    #     node_features = []
 
-        # Agent nodes
-        for agent in self.world.agents:
-            node_features.append(agent.state.pos)
+    #     # Agent nodes
+    #     for agent in self.world.agents:
+    #         node_features.append(agent.state.pos)
 
-        # Obstacle nodes (only position is needed)
-        for obst in self._obstacles:
-            node_features.append(obst.state.pos)
+    #     # Obstacle nodes (only position is needed)
+    #     for obst in self._obstacles:
+    #         node_features.append(obst.state.pos)
 
-        # Target nodes (only position is needed)
-        for target in self._targets:
-            node_features.append(target.state.pos)
+    #     # Target nodes (only position is needed)
+    #     for target in self._targets:
+    #         node_features.append(target.state.pos)
 
-        node_features = torch.stack(node_features).to(self.world.device)
+    #     node_features = torch.stack(node_features).to(self.world.device)
 
-        # Edge index: Fully connected graph
-        edge_index = []
-        edge_features = []
-        for i in range(self.n_agents + self.n_obstacles + self.n_targets):
-            for j in range(self.n_agents + self.n_obstacles + self.n_targets):
-                if i != j:  # No self-loops
-                    edge_index.append([i, j])
+    #     # Edge index: Fully connected graph
+    #     edge_index = []
+    #     edge_features = []
+    #     for i in range(self.n_agents + self.n_obstacles + self.n_targets):
+    #         for j in range(self.n_agents + self.n_obstacles + self.n_targets):
+    #             if i != j:  # No self-loops
+    #                 edge_index.append([i, j])
 
-                    distance = torch.norm(node_features[i, :2] - node_features[j, :2], p=2).unsqueeze(0)
-                    edge_features.append(distance)
+    #                 distance = torch.norm(node_features[i, :2] - node_features[j, :2], p=2).unsqueeze(0)
+    #                 edge_features.append(distance)
 
-        # Convert to tensors for PyTorch Geometric
-        # node_features = torch.tensor(node_features, device=self.world.device)
-        edge_index = torch.tensor(edge_index, device=self.world.device).T  # Shape (2, num_edges)
-        edge_features = torch.stack(edge_features).to(self.world.device)  # Shape: (num_edges, 1)
+    #     # Convert to tensors for PyTorch Geometric
+    #     # node_features = torch.tensor(node_features, device=self.world.device)
+    #     edge_index = torch.tensor(edge_index, device=self.world.device).T  # Shape (2, num_edges)
+    #     edge_features = torch.stack(edge_features).to(self.world.device)  # Shape: (num_edges, 1)
 
-        return node_features, edge_index, edge_features
+    #     return node_features, edge_index, edge_features
 
-    def get_gnn_obs_fromPos(self, agent: Agent):
-        obs = {}
+    # def get_gnn_obs_fromPos(self, agent: Agent):
+    #     obs = {}
 
-        obs["position_key"] = agent.state.pos
-        obs["edge_index"]
+    #     obs["position_key"] = agent.state.pos
+    #     obs["edge_index"]
 
-        return obs
+    #     return obs
 
 
     def info(self, agent: Agent) -> Dict[str, Tensor]:

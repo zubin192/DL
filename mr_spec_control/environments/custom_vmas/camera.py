@@ -21,7 +21,7 @@ class TopDownCamera(Sensor):
         frame_y_dim: float,
         resolution: Tuple[int, int] = (64, 64),
         center: Union[None, torch.Tensor] = None,
-        render_color: Union[Color, Tuple[float, float, float]] = Color.YELLOW,
+        render_color: Union[Color, Tuple[float, float, float]] = Color.LIGHT_GREEN,
         alpha: float = 0.1,
         entity_filter: Callable[[Entity], bool] = lambda _: True,
     ):

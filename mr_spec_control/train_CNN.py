@@ -19,7 +19,7 @@ if __name__ == "__main__":
     vmas_device = "cuda" # @param {"type":"string"}
 
     # Load task configuration
-    task_config_path = "mr_spec_control/conf/task/custom_vmas/discovery_mothership.yaml"
+    task_config_path = "mr_spec_control/conf/task/custom_vmas/discovery_mothership_CNN.yaml"
     task = CustomVmasTask.DISCOVERY_OBSTACLES.get_from_yaml(task_config_path)
 
     # Load RL algorithm config
