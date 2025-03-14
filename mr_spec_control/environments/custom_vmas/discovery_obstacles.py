@@ -401,19 +401,19 @@ class Scenario(BaseScenario):
             for a in self.world.agents:
                 relative_pos = agent.state.pos - a.state.pos
                 a_dists = torch.linalg.norm(relative_pos, dim=1)
-                relative_pos[a_dists > radius] = 0
+                # relative_pos[a_dists > radius] = 0
                 agent_poses.append(relative_pos)
 
             for t in self._targets:
                 relative_pos = agent.state.pos - t.state.pos
                 t_dists = torch.linalg.norm(relative_pos, dim=1)
-                relative_pos[t_dists > radius] = 0
+                # relative_pos[t_dists > radius] = 0
                 target_poses.append(relative_pos)
 
             for o in self._obstacles:
                 relative_pos = agent.state.pos - o.state.pos
                 o_dists = torch.linalg.norm(relative_pos, dim=1)
-                relative_pos[o_dists > radius] = 0
+                # relative_pos[o_dists > radius] = 0
                 obstacle_poses.append(relative_pos)
 
 
